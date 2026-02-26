@@ -1,4 +1,4 @@
-name: Weekly Weihai Business Briefing (Gemini Edition)
+name: Weekly Weihai Business Briefing (Pro Edition)
 
 on:
   schedule:
@@ -24,7 +24,20 @@ jobs:
       - name: Run Briefing Script
         env:
           # ==========================================
-          # AI 配置 (完全采纳你的参考图逻辑)
+          # 1. 业务定制变量 (在 Variables 中配置)
+          # ==========================================
+          TARGET_COMPANIES: ${{ vars.TARGET_COMPANIES }}
+          TARGET_INDUSTRY: ${{ vars.TARGET_INDUSTRY }}
+          
+          # ==========================================
+          # 2. 国产/备用模型配置 (可选)
+          # ==========================================
+          CUSTOM_API_KEY: ${{ secrets.CUSTOM_API_KEY }}
+          CUSTOM_BASE_URL: ${{ vars.CUSTOM_BASE_URL }}
+          CUSTOM_MODEL: ${{ vars.CUSTOM_MODEL }}
+
+          # ==========================================
+          # 3. Gemini 原有配置 (主选)
           # ==========================================
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-3-flash-preview' }}
@@ -32,13 +45,12 @@ jobs:
           GEMINI_REQUEST_DELAY: '3.0'
           
           # ==========================================
-          # 搜索与邮件配置
+          # 4. 搜索与邮件配置
           # ==========================================
           SEARCH_API_KEY: ${{ secrets.SEARCH_API_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
           
-          # 触发方式
           TRIGGER_EVENT: ${{ github.event_name }} 
         run: python main.py
