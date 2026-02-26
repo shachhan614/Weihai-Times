@@ -1,0 +1,43 @@
+name: Weekly Weihai Business Briefing (Email Version)
+
+on:
+  schedule:
+    - cron: '0 1 * * 1-5' # 北京时间早9点运行
+  workflow_dispatch:
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        # 新增了 markdown 库，用于将简报转为精美的网页格式邮件
+        run: |
+          pip install requests openai chinesecalendar markdown
+
+      - name: Run LLM Briefing Script
+        env:
+          # --- 业务变量 (在 Variables 中配置) ---
+          TARGET_COMPANIES: ${{ vars.TARGET_COMPANIES }} 
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          
+          # --- 敏感密钥 (在 Secrets 中配置) ---
+          SEARCH_API_KEY: ${{ secrets.SEARCH_API_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          
+          # --- 邮件配置 (在 Secrets 中配置) ---
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
+          
+          # 触发方式
+          TRIGGER_EVENT: ${{ github.event_name }} 
+        run: python main.py
