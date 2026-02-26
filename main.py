@@ -20,7 +20,6 @@ raw_companies = os.getenv("TARGET_COMPANIES") or "山东未来机器人有限公
 TARGET_COMPANIES = raw_companies.replace('、', ' ').replace('，', ' ') 
 
 raw_industry = os.getenv("TARGET_INDUSTRY") or "工程承包 橡胶轮胎 医疗器械"
-# 解析出行业列表，用于后续动态生成
 INDUSTRY_LIST = [i for i in raw_industry.replace('、', ' ').replace('，', ' ').split() if i]
 
 SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
@@ -42,7 +41,7 @@ def search_info(query, days=7):
     url = "https://api.tavily.com/search"
     payload = {
         "api_key": SEARCH_API_KEY,
-        "query": query,
+        "query": f"{query} (current week {TODAY_STR})", # 在搜索词中强行注入当前日期锚点
         "search_depth": "advanced",
         "include_answer": False, 
         "days": days
@@ -54,46 +53,45 @@ def search_info(query, days=7):
             content = result.get('content', '').replace('\n', ' ')
             source_url = result.get('url', '无来源链接')
             results_str.append(f"【内容】: {content} \n【来源】: {source_url}\n")
-        return "\n".join(results_str) if results_str else "暂无直接搜索结果。"
+        return "\n".join(results_str) if results_str else "暂无相关搜索结果。"
     except Exception as e:
         return f"搜索失败: {e}"
 
 # ==========================================
-# 3. 提示词与简报生成 (核心逻辑更新)
+# 3. 提示词与简报生成 (严控时效性与格式)
 # ==========================================
 def generate_briefing(target_comp_info, alt_comp_info, weihai_info, ind_data_dict, bank_info, macro_global_info, tech_info):
     client = OpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
     
-    # 构造行业素材字符串
     ind_context = ""
     for ind, content in ind_data_dict.items():
         ind_context += f"--- 行业名称: {ind} ---\n{content}\n"
 
     prompt = f"""
-    【角色】
-    你是来自顶尖投行研究所的首席经济师，对宏观政策和经济、行业动态、公司发展都有深入的见解。系统时间：{TODAY_STR}。
+    【核心指令】
+    你是来自顶尖投行研究所的首席经济师，对宏观政策和经济、行业动态、公司发展都有深入的见解。今天是{TODAY_STR}。
+    你必须保证所有新闻都是在最近 7 天内发生的。
+    **严禁提到过时旧闻（例如 DeepSeek R1 发布等去年的事），必须寻找本周的具体技术迭代或事件。**
 
-    【排版极其严格规则 - 参考 image_c1e7f1.png】
-    1. 垂直分布：每一条新闻的输出必须严格按照以下格式，【每一项内容必须独占一行，禁止连在一起】：
-       数字序号. 标题概述（加粗）
-       业务参考方向：具体建议内容
-       来源：[URL地址]
-    2. 禁止堆砌：每一条新闻之间要有一个空行。
+    【垂直化排版规则 - 极其重要】
+    参考 image_c1e7f1.png，每一条新闻必须严格垂直排列，绝对禁止标题、参考、来源出现在同一行！
+    格式示例：
+    1. **标题内容（加粗）**
+    业务参考方向：具体内容建议
+    来源：[URL地址]
 
-    【内容分布逻辑】
-    - 第一部分：2+2。若指定企业无，声明后使用备用企业。
-    - 第二、四、五部分：严格 2国内+2国际。
-    - 第三部分（行业风向与银行动态）：
-        - 请针对以下行业列表逐一输出：{list(ind_data_dict.keys())}。
-        - 【每个行业】必须提供：1条国内动态 + 1条国际动态。
-        - 【银行板块】：最后固定输出 3 条威海辖区银行国际业务政策。
-        - 此板块不受“4条限制”，条数 = 行业数*2 + 3。
+    【板块逻辑】
+    一、 重点企业：2+2。指定企业无则用备选。
+    二、 威海本地政经：必须提供 4 条（2国内本地+2国际出海），禁止找借口说没新闻。
+    三、 行业风向与银行动态：按列表逐一生成，每行业1内1外。最后加3条银行动态。
+    四、 宏观与全球局势：必须提供 4 条（2国内宏观+2全球局势）。
+    五、 科技前沿杂谈：**标题仅保留此五字。** 必须提供 5 条新闻（2条国内 + 3条国际）。必须是最新的科技进展。
 
     【素材池】
     指定企业A1: {target_comp_info} | 备用A2: {alt_comp_info} | 威海政经B: {weihai_info} 
     全行业素材C: {ind_context} | 银行素材D: {bank_info} | 宏观E: {macro_global_info} | 科技F: {tech_info}
 
-    【强制模板】（不要输出开头语）：
+    【输出模板】（垂直排版，每一行只放一个要素）：
 
     # 商业情报周报
 
@@ -101,24 +99,28 @@ def generate_briefing(target_comp_info, alt_comp_info, weihai_info, ind_data_dic
     ---
 
     ## 一、 重点企业动态
-    （2国内+2国际。若无则输出“**关注企业过去一周没有新闻。以下为您整理威海市辖区内其他优质产能与出海重点企业动态：**”。垂直排版，业务参考与来源必须换行。）
 
     ## 二、 威海本地政经
     **国内焦点：**
-    （2条，垂直排版）
+    (2条，垂直排版)
     **国际与出海合作：**
-    （2条，垂直排版）
+    (2条，垂直排版)
 
     ## 三、 行业风向与银行动态
-    （请按行业顺序输出，每个行业 1内1外。最后附带 3 条银行动态。每个条目必须垂直换行。）
 
-    ## 四、 宏观与全球重点局局势
-    （2国内宏观+2全球局势。垂直排版。）
+    ## 四、 宏观与全球重点局势
+    **国内宏观：**
+    (2条，垂直排版)
+    **全球局势：**
+    (2条，垂直排版)
 
-    ## 五、 科技前沿杂谈（AI/机器人/新能源）
-    （2中国突破+2全球前沿。垂直排版。）
+    ## 五、 科技前沿杂谈
+    **中国科技进展：**
+    (2条，垂直排版)
+    **全球科技前沿：**
+    (3条，垂直排版)
 
-    <p style="text-align: center;"><strong>以上为本周新闻，均为自动收集并由AI生成。</strong></p>
+    <p style="text-align: center;"><strong>以上为本周新闻，均为自动收集并由AI生成</strong></p>
     <p style="text-align: center;">🤖我们下周再见🤖</p>
     """
     
@@ -131,7 +133,7 @@ def generate_briefing(target_comp_info, alt_comp_info, weihai_info, ind_data_dic
     return response.choices[0].message.content
 
 # ==========================================
-# 4. 邮件发送 (样式升级)
+# 4. 邮件发送 (样式固定)
 # ==========================================
 def send_email(subject, markdown_content):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
@@ -141,7 +143,7 @@ def send_email(subject, markdown_content):
     full_html = f"""
     <html>
     <head><style>
-        body {{ font-family: 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; font-size: 18px; }} 
+        body {{ font-family: 'Microsoft YaHei', sans-serif; line-height: 2.0; color: #333; font-size: 18px; }} 
         h1 {{ color: #1a365d; font-size: 32px; border-bottom: 3px solid #1a365d; padding-bottom: 12px; }}
         h2 {{ color: #2c3e50; font-size: 26px; border-bottom: 1px dashed #ccc; padding-bottom: 8px; margin-top: 40px; }}
         p {{ margin-bottom: 15px; }}
@@ -159,7 +161,7 @@ def send_email(subject, markdown_content):
     msg.attach(MIMEText(full_html, 'html', 'utf-8'))
 
     try:
-        server = smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=20)
+        server = smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=30)
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.sendmail(EMAIL_SENDER, receivers_list, msg.as_string())
         server.quit()
@@ -171,29 +173,19 @@ def send_email(subject, markdown_content):
 # 5. 执行主流程
 # ==========================================
 if __name__ == "__main__":
-    # 1. 搜集各维度素材
-    print(f"-> 搜集企业动态: {TARGET_COMPANIES}")
+    print(f"-> 开始执行商业简报生成任务，日期: {TODAY_STR}")
     target_comp_raw = search_info(f"{TARGET_COMPANIES} 最新 商业新闻 国际动态")
-    alt_comp_raw = search_info("威海市 重点企业 外贸 出口 海外投资 优质产能 最新新闻")
-    
-    print("-> 搜集威海政经...")
+    alt_comp_raw = search_info("威海市 重点企业 外贸 出口 优质产能 最新新闻")
     weihai_raw = search_info("威海市 招商引资 政策 外贸 国际合作 最新动向")
     
-    # 动态搜集每个行业的素材
     industry_data = {}
     for ind in INDUSTRY_LIST:
-        print(f"-> 搜集行业素材: {ind}...")
         industry_data[ind] = search_info(f"{ind} 行业 中国 国际 最新 突发新闻")
         
-    print("-> 搜集银行动态...")
     bank_raw = search_info("威海 银行 国际业务 跨境金融 结售汇 政策 最新动态")
-    
     macro_global_raw = search_info("中国宏观经济 重点政策 全球局势 国际贸易 重大新闻")
-    tech_raw = search_info("人工智能 AI 机器人 新能源 中国突破 全球前沿动向")
+    # 强化科技部分的搜索，增加“this week”关键词
+    tech_raw = search_info("Latest Artificial Intelligence breakthrough Robotics New Energy China Global this week")
     
-    # 2. 调用大模型生成
-    print("-> 正在由智能新闻官🤖提炼简报内容...")
     briefing = generate_briefing(target_comp_raw, alt_comp_raw, weihai_raw, industry_data, bank_raw, macro_global_raw, tech_raw)
-    
-    # 3. 发送邮件
-    send_email(f"【威海周报～信保特供】{TODAY_STR}", briefing)
+    send_email(f"【威海商业情报】{TODAY_STR}", briefing)
