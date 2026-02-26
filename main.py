@@ -1,6 +1,7 @@
 import os
 import sys
 import datetime
+import time
 import requests
 import json
 import chinese_calendar as calendar
@@ -9,26 +10,36 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
-import markdown # 用于将 Markdown 转为 HTML 邮件
+import markdown
 
-# 1. 加载环境变量
-TARGET_COMPANIES = os.getenv("TARGET_COMPANIES", "威海光威复合材料 威海广泰 迪尚集团")
+# ==========================================
+# 1. 配置区 (直接修改你想关注的企业)
+# ==========================================
+TARGET_COMPANIES = "威海光威复合材料 威海广泰 迪尚集团 威高集团"
+
+# ==========================================
+# 2. 读取环境变量 (适配最新的 YAML 配置)
+# ==========================================
 SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
 
-LLM_API_KEY = os.getenv("LLM_API_KEY")
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1") 
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o") 
+# Gemini 专属环境变量
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+GEMINI_MODEL_FALLBACK = os.getenv("GEMINI_MODEL_FALLBACK", "gemini-2.5-flash")
+GEMINI_REQUEST_DELAY = float(os.getenv("GEMINI_REQUEST_DELAY", "3.0"))
 
-# 邮件相关变量
+# 邮件环境变量
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVERS = os.getenv("EMAIL_RECEIVERS")
-SMTP_SERVER = "smtp.qq.com" # 默认使用 QQ 邮箱服务器，若用网易请改为 smtp.163.com
-SMTP_PORT = 465             # SSL 默认端口
+SMTP_SERVER = "smtp.qq.com" # 网易邮箱请改 smtp.163.com
+SMTP_PORT = 465             
 
 TRIGGER_EVENT = os.getenv("TRIGGER_EVENT", "schedule")
 
-# 2. 节假日检测逻辑
+# ==========================================
+# 3. 核心业务逻辑
+# ==========================================
 def is_first_workday_of_week():
     today = datetime.date.today()
     if not calendar.is_workday(today):
@@ -40,7 +51,6 @@ def is_first_workday_of_week():
             return False
     return True
 
-# 3. 定向搜索函数
 def search_info(query, days=7):
     url = "https://api.tavily.com/search"
     payload = {
@@ -57,9 +67,12 @@ def search_info(query, days=7):
         print(f"搜索出错 [{query}]: {e}")
         return "暂无相关搜索结果"
 
-# 4. LLM 整理与防幻觉生成
 def generate_briefing(companies_info, weihai_info, macro_info, global_info):
-    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL) 
+    # 使用 OpenAI SDK 兼容调用 Gemini API
+    client = OpenAI(
+        api_key=GEMINI_API_KEY, 
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    ) 
     
     prompt = f"""
     【你的角色与受众】
@@ -82,30 +95,45 @@ def generate_briefing(companies_info, weihai_info, macro_info, global_info):
     每一条简报后，用一句话客观说明该事件对威海本地业务人员在客户沟通或业务开拓上的“参考方向”。
     """
     
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1 
-    )
-    return response.choices[0].message.content
+    # 加入请求延迟，防止触发 API 速率限制
+    print(f"等待 {GEMINI_REQUEST_DELAY} 秒后发起大模型请求...")
+    time.sleep(GEMINI_REQUEST_DELAY)
 
-# 5. 发送邮件功能
+    try:
+        response = client.chat.completions.create(
+            model=GEMINI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1 
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"⚠️ 主模型 {GEMINI_MODEL} 请求失败: {e}")
+        print(f"🔄 正在尝试使用备用模型 {GEMINI_MODEL_FALLBACK}...")
+        try:
+            # 备用模型 Fallback 逻辑
+            time.sleep(GEMINI_REQUEST_DELAY)
+            fallback_response = client.chat.completions.create(
+                model=GEMINI_MODEL_FALLBACK,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1 
+            )
+            return fallback_response.choices[0].message.content
+        except Exception as fallback_e:
+            print(f"❌ 备用模型也请求失败: {fallback_e}")
+            return "生成简报失败，请检查 API Key 或网络状态。"
+
 def send_email(subject, markdown_content):
     if not EMAIL_SENDER or not EMAIL_PASSWORD:
         print("未配置发件人邮箱或密码，跳过邮件发送。")
         return
 
-    # 逻辑：如果收件人留空，则发给自己；否则按逗号分隔多个收件人
     if not EMAIL_RECEIVERS or EMAIL_RECEIVERS.strip() == "":
         receivers_list = [EMAIL_SENDER]
     else:
-        # 支持中英文逗号分割
         clean_receivers = EMAIL_RECEIVERS.replace('，', ',')
         receivers_list = [r.strip() for r in clean_receivers.split(',') if r.strip()]
 
-    # 将 Markdown 转为 HTML，方便在邮件客户端中优雅地阅读
     html_content = markdown.markdown(markdown_content)
-    # 添加简单的 CSS 样式让邮件更美观
     full_html = f"""
     <html>
     <head><style>body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }} h2 {{ color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px; }}</style></head>
@@ -135,18 +163,21 @@ if __name__ == "__main__":
             print("今天不是本周首个工作日，任务跳过。")
             sys.exit(0)
             
-    print("开始执行情报收集...")
+    print(f"开始执行情报收集，当前配置主模型: {GEMINI_MODEL}")
     
+    print("-> 搜索特定企业动态...")
     comp_raw = search_info(f"{TARGET_COMPANIES} 最新公司动态 商业新闻")
+    print("-> 搜索威海重点政经...")
     weihai_raw = search_info("威海市 重点舆情 新闻 政策颁布 行业扶持 经济指标 外经外贸 招商引资 最新动态")
+    print("-> 搜索中国宏观政策...")
     macro_raw = search_info("中国宏观经济变化 重点政策 十五五规划 两会 中央经济工作会议 重点指标 LPR 关税 最新新闻")
+    print("-> 搜索全球宏观局势...")
     global_raw = search_info("Global economic trade financial news international situation latest trends")
     
     print("信息收集完毕，正在呼叫大模型进行严谨提炼...")
     briefing = generate_briefing(comp_raw, weihai_raw, macro_raw, global_raw)
     
     print("简报生成完毕，准备发送邮件...")
-    # 动态生成邮件标题，带上今天的日期
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     email_subject = f"【威海业务情报周报】{today_str}"
     
