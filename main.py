@@ -10,6 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
+from email.utils import formataddr # 新增：专门用于解决 QQ 邮箱发件人格式验证的库
 import markdown
 
 # ==========================================
@@ -18,21 +19,19 @@ import markdown
 TARGET_COMPANIES = "威海光威复合材料 威海广泰 迪尚集团 威高集团"
 
 # ==========================================
-# 2. 读取环境变量 (适配最新的 YAML 配置)
+# 2. 读取环境变量 
 # ==========================================
 SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
 
-# Gemini 专属环境变量
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 GEMINI_MODEL_FALLBACK = os.getenv("GEMINI_MODEL_FALLBACK", "gemini-2.5-flash")
 GEMINI_REQUEST_DELAY = float(os.getenv("GEMINI_REQUEST_DELAY", "3.0"))
 
-# 邮件环境变量
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVERS = os.getenv("EMAIL_RECEIVERS")
-SMTP_SERVER = "smtp.qq.com" # 网易邮箱请改 smtp.163.com
+SMTP_SERVER = "smtp.qq.com" 
 SMTP_PORT = 465             
 
 TRIGGER_EVENT = os.getenv("TRIGGER_EVENT", "schedule")
@@ -68,7 +67,6 @@ def search_info(query, days=7):
         return "暂无相关搜索结果"
 
 def generate_briefing(companies_info, weihai_info, macro_info, global_info):
-    # 使用 OpenAI SDK 兼容调用 Gemini API
     client = OpenAI(
         api_key=GEMINI_API_KEY, 
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -95,7 +93,6 @@ def generate_briefing(companies_info, weihai_info, macro_info, global_info):
     每一条简报后，用一句话客观说明该事件对威海本地业务人员在客户沟通或业务开拓上的“参考方向”。
     """
     
-    # 加入请求延迟，防止触发 API 速率限制
     print(f"等待 {GEMINI_REQUEST_DELAY} 秒后发起大模型请求...")
     time.sleep(GEMINI_REQUEST_DELAY)
 
@@ -110,7 +107,6 @@ def generate_briefing(companies_info, weihai_info, macro_info, global_info):
         print(f"⚠️ 主模型 {GEMINI_MODEL} 请求失败: {e}")
         print(f"🔄 正在尝试使用备用模型 {GEMINI_MODEL_FALLBACK}...")
         try:
-            # 备用模型 Fallback 逻辑
             time.sleep(GEMINI_REQUEST_DELAY)
             fallback_response = client.chat.completions.create(
                 model=GEMINI_MODEL_FALLBACK,
@@ -142,8 +138,10 @@ def send_email(subject, markdown_content):
     """
 
     msg = MIMEMultipart()
-    msg['From'] = Header(f"威海商业情报助手 <{EMAIL_SENDER}>")
-    msg['To'] = Header(", ".join(receivers_list))
+    
+    # --- 修复核心：使用 formataddr 标准化发件人和收件人 ---
+    msg['From'] = formataddr(("威海商业情报助手", EMAIL_SENDER))
+    msg['To'] = ", ".join(receivers_list)
     msg['Subject'] = Header(subject, 'utf-8')
     msg.attach(MIMEText(full_html, 'html', 'utf-8'))
 
