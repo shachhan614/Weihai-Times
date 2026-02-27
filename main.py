@@ -215,7 +215,20 @@ def send_email(subject, markdown_content):
 if __name__ == "__main__":
     print(f"-> 启动报告生成器，当前日期: {TODAY_STR} ...")
 
-    client = OpenAI(api_key=GEMINI_API_KEY, base_url="[https://generativelanguage.googleapis.com/v1beta/openai/](https://generativelanguage.googleapis.com/v1beta/openai/)") if not CUSTOM_API_KEY else OpenAI(api_key=CUSTOM_API_KEY, base_url=CUSTOM_BASE_URL)
+    # 【关键修改】：去掉了多余的括号，并加入了 timeout=120.0 防止大模型写长文时超时断连
+    if not CUSTOM_API_KEY:
+        client = OpenAI(
+            api_key=GEMINI_API_KEY, 
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            timeout=120.0
+        )
+    else:
+        client = OpenAI(
+            api_key=CUSTOM_API_KEY, 
+            base_url=CUSTOM_BASE_URL,
+            timeout=120.0
+        )
+        
     model = GEMINI_MODEL if not CUSTOM_API_KEY else CUSTOM_MODEL
     is_gem = not bool(CUSTOM_API_KEY)
 
