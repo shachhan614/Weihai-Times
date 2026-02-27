@@ -75,7 +75,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     prompt = f"""
     【角色】
-    你是来自顶尖投行研究所的首席经济师。今天是{TODAY_STR}。所有新闻必须是本周最新动态。禁止修辞。
+    你是来自顶尖投行研究所的首席经济师，对宏观政策和经济、行业动态、公司发展都有深入的见解。。今天是{TODAY_STR}。所有新闻必须是本周最新动态。禁止修辞。
 
     【极度严厉的排版与格式指令】
     1. 必须首先生成【目录】，然后输出正文。
@@ -100,8 +100,8 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     【绝对时效性与 URL 年份查杀机制（防旧闻生死红线）】
     1. 你必须同步核查“文章发布时间”与“事件真实发生时间”。
-    2. URL 查杀：你必须仔细检查我提供的每一个【来源】URL。如果网址中包含 "2024"、"2023" 或不属于本月的日期路径（例如 /2024/11/221717.html），说明搜索引擎抓取了严重的过期废料，【绝对禁止使用该条素材】！
-    3. 特例容错：如果在限定的 lmsys.org 素材中找不到最近几天发布的新榜单，请不要强行编造，直接在第六部分第1条输出：“1. **LMSYS 官方排行榜本周无显著变动**\\n梗概：LMSYS 官方本周暂未发布新的大模型综合跑分变动，当前格局保持稳定。\\n关键词：LMSYS | 榜单稳定\\n来源：https://lmsys.org”
+    2. URL 查杀：仔细检查我提供的每一个【来源】URL。如果网址中包含 "2024"、"2023" 或不属于本月的日期路径，说明是过期废料，【绝对禁止使用该条素材】！
+    3. 特例容错：如果在 lmsys.org 素材中找不到最近几天发布的新榜单，请不要强行编造，直接在第六部分第1条输出：“1. **LMSYS 官方排行榜本周无显著变动**\\n梗概：LMSYS 官方本周暂未发布新的大模型综合跑分变动。\\n关键词：LMSYS | 榜单稳定\\n来源：https://lmsys.org”
 
     【六大板块内容架构（不准缺漏）】
     一、 重点企业动态（必须15条）：
@@ -126,7 +126,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     六、 科技前沿与大语言模型（必须9条，严格执行 URL 年份查杀）：
         分为三部分：
-        【大模型焦点】（4条）：第1条必为当天的权威跑分排行榜（如LMSYS）最新榜单与解读（如无更新按特例容错输出）。第2-4条必为本周刚发生的重磅新闻。
+        【大模型焦点】（4条）：第1条必为当天的权威跑分排行榜（如LMSYS）最新榜单与解读（无更新按特例输出）。第2-4条必为本周刚发生的重磅新闻。
         【中国科技进展】（2条）：AI/机器人/新能源等本周真实突破。
         【全球科技前沿】（3条）：全球巨头本周最新前沿动向。
         每条格式同上。
@@ -187,6 +187,7 @@ def send_email(subject, markdown_content):
         body {{ font-family: 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; font-size: 16px; }} 
         h1 {{ color: #1a365d; font-size: 28px; border-bottom: 3px solid #1a365d; padding-bottom: 12px; }}
         h2 {{ color: #2c3e50; font-size: 22px; border-bottom: 1px dashed #ccc; padding-bottom: 8px; margin-top: 40px; }}
+        h3 {{ color: #1a365d; font-size: 18px; margin-top: 20px; font-weight: normal; }} 
         p {{ margin-bottom: 12px; }}
         a {{ color: #3498db; text-decoration: none; word-break: break-all; }}
         strong {{ color: #c0392b; }}
@@ -214,9 +215,7 @@ def send_email(subject, markdown_content):
 # 5. 执行主流程
 # ==========================================
 if __name__ == "__main__":
-    if TRIGGER_EVENT == "schedule" and not is_first_workday_of_week():
-        print("今日非本周首个工作日，任务跳过。")
-        sys.exit(0)
+    print(f"-> 启动报告生成器，当前日期: {TODAY_STR} ...")
 
     client = OpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") if not CUSTOM_API_KEY else OpenAI(api_key=CUSTOM_API_KEY, base_url=CUSTOM_BASE_URL)
     model = GEMINI_MODEL if not CUSTOM_API_KEY else CUSTOM_MODEL
@@ -233,7 +232,7 @@ if __name__ == "__main__":
         industry_data[ind] = search_info(f"{ind} 行业 中国 国际 最新 突发新闻")
         
     print("-> 搜集金融与银行业务...")
-    finance_raw = search_info("跨境结算 美元 日元 欧元 人民币 汇率变动 LPR 联邦基金利率 威海辖区银行 外汇 政策")
+    finance_raw = search_info("跨境结算 美元 日元 欧元 人民币 汇率变动 LPR 法定存款准备金 联邦基金利率 威海辖区银行 外汇 政策")
     
     print("-> 搜集宏观局势...")
     macro_raw = search_info("中国宏观经济 全球局势 国际贸易 重大新闻")
@@ -241,23 +240,18 @@ if __name__ == "__main__":
     # ---------------------------------------------------------
     # 彻底拦截：榜单官方化，媒体精细化
     # ---------------------------------------------------------
-    # 1. 唯一且绝对权威的大模型排名官网
     LMSYS_DOMAIN = ["lmsys.org"]
-    
-    # 2. 其他科技进展使用的顶尖优质媒体（过滤掉了 CSDN、百家号等内容农场）
     TECH_MEDIA_DOMAINS = [
         "qbitai.com", "jiqizhixin.com", "36kr.com", "leiphone.com", "geekpark.net",
         "techcrunch.com", "venturebeat.com", "theverge.com"
     ]
     
-    # 注意这里必须用英文搜索，因为 lmsys.org 是纯英文网站，用中文搜返回是空的
-    print("-> 搜集权威大语言模型排行榜 (严苛限制仅在 lmsys.org 内搜索)...")
+    print("-> 搜集权威大语言模型排行榜...")
     llm_leaderboard_raw = search_info("LLM Leaderboard Chatbot Arena Model Ranking updates", max_results=5, include_domains=LMSYS_DOMAIN)
     
     print("-> 搜集其他科技前沿 (AI/机器人/新能源)...")
     tech_general_raw = search_info("人工智能 AI大模型 机器人 新能源 全球前沿动向 最新突破", max_results=20, include_domains=TECH_MEDIA_DOMAINS)
     
-    # 组合为科技总素材
     tech_raw = f"【权威大模型榜单专区（来自lmsys.org）】\n{llm_leaderboard_raw}\n\n【其他科技进展】\n{tech_general_raw}"
     
     print("-> 智能新闻官正在撰写超级周报...")
