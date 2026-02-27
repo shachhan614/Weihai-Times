@@ -38,9 +38,9 @@ SMTP_SERVER = "smtp.qq.com"
 TODAY_STR = datetime.date.today().strftime("%Y年%m月%d日")
 
 # ==========================================
-# 2. 增强搜索函数 (提高最大返回条数以满足庞大内容需求)
+# 2. 增强搜索函数 (加入防污染白名单机制 include_domains)
 # ==========================================
-def search_info(query, days=7, max_results=15):
+def search_info(query, days=7, max_results=15, include_domains=None):
     url = "https://api.tavily.com/search"
     payload = {
         "api_key": SEARCH_API_KEY,
@@ -50,6 +50,10 @@ def search_info(query, days=7, max_results=15):
         "days": days,
         "max_results": max_results
     }
+    # 如果传入了白名单，则限制只在这些域名内搜索
+    if include_domains:
+        payload["include_domains"] = include_domains
+
     try:
         response = requests.post(url, json=payload).json()
         results_str = []
@@ -62,7 +66,7 @@ def search_info(query, days=7, max_results=15):
         return f"搜索失败: {e}"
 
 # ==========================================
-# 3. 提示词与简报生成 (超级研报排版)
+# 3. 提示词与简报生成
 # ==========================================
 def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_data_dict, finance_raw, macro_raw, tech_raw):
     ind_context = ""
@@ -71,18 +75,12 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     prompt = f"""
     【角色】
-    你是来自顶尖投行研究所的首席经济师，对宏观政策和经济、行业动态、公司发展都有深入的见解。今天是{TODAY_STR}。所有新闻必须是本周最新动态。在所有内容中禁止修辞。
-
-    【发布与内容双重时效性核查机制（防旧闻核心指令）】
-    你必须同步核查“文章发布时间”与“事件真实发生时间”。
-    严禁收录“近期发布但内容是几个月前的旧闻盘点、迟到的模型测评或旧事件的重新炒作”。
-    特别是在科技与大语言模型板块，如果一篇文章是在测评几个月前发布的大模型，这属于过时旧闻，绝对禁止采用！
-    你选入的每一条新闻，其核心事件本身必须是在最近一周内（即{TODAY_STR}的前7天内）首次真实发生的。
+    你是来自顶尖投行研究所的首席经济师。今天是{TODAY_STR}。所有新闻必须是本周最新动态。禁止修辞。
 
     【极度严厉的排版与格式指令】
-    1. 你必须首先生成【目录】，然后再输出正文。
-    2. 【目录的终极排版要求】：
-       绝对禁止把目录连成一段！为了精确控制字号（标题18px不加粗，正文14px），请在生成【目录】部分时，放弃 Markdown，严格照抄以下 HTML 格式，每个条目前加序号并紧跟 `<br>` 标签换行：
+    1. 必须首先生成【目录】，然后输出正文。
+    2. 【目录排版要求】：
+       绝对禁止把目录连成一段！为了精确控制字号（标题18px不加粗，正文14px），请在生成【目录】部分时，放弃 Markdown，严格照抄以下 HTML 格式：
 
        <h3 style="color: #1a365d; font-size: 18px; font-weight: normal; margin-top: 20px; margin-bottom: 10px;">一、 重点企业动态</h3>
        <div style="font-size: 14px; color: #333; line-height: 1.8;">
@@ -100,17 +98,20 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     3. 正文部分：恢复使用 Markdown。所有新闻的要素必须【垂直排版，另起一行】。
 
-    【六大板块内容架构（不准找借口缺漏）】
-    一、 重点企业动态（必须凑齐15条）：
-        包含指定企业，同时深挖大威海地区符合“商业模式走得通、海外买家认可的新质生产力”的优质产能企业。
+    【发布与内容双重时效性核查机制（防旧闻核心指令）】
+    你必须同步核查“文章发布时间”与“事件真实发生时间”。严禁收录内容是几个月前旧闻盘点或迟到的模型测评。每一条新闻，其核心事件必须是在最近一周内（即{TODAY_STR}的前7天内）首次真实发生的。
+
+    【六大板块内容架构（不准缺漏）】
+    一、 重点企业动态（必须15条）：
+        包含指定企业，同时深挖大威海地区符合新质生产力的优质产能企业。
         每条格式：
         序号. **[新闻标题]**
-        梗概：[三句话概括]
+        梗概：[用三句话精确概括核心事件、商业动作及影响]
         关键词：[词1] | [词2]
         来源：[URL地址]
 
-    二、 威海本地政经（内容须覆盖大威海及荣成、文登、乳山，必须凑齐8条）：
-        国内焦点 4条 + 国际与出海合作 4条。每条格式同上。（梗概：事实+影响+意义）
+    二、 威海本地政经（必须8条）：
+        国内焦点 4条 + 国际与出海合作 4条。每条格式同上。
 
     三、 行业风向（不受固定条数限制）：
         针对以下行业：{list(ind_data_dict.keys())}。每个行业必须提供 1条国内 + 1条国外 新闻。每条格式同上。
@@ -123,9 +124,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     六、 科技前沿与大语言模型（必须9条，严格执行时效双核查机制）：
         分为三部分：
-        【大模型焦点】（4条）：
-        第1条：必为当天的权威跑分排行榜（如LMSYS）最新榜单与解读。
-        第2-4条：必须是本周刚发生的大语言模型重磅新闻，坚决剔除旧模型的滞后测评文。
+        【大模型焦点】（4条）：第1条必为当天的权威跑分排行榜（如LMSYS）最新榜单与解读。第2-4条必为本周刚发生的重磅新闻。
         【中国科技进展】（2条）：AI/机器人/新能源等本周真实突破。
         【全球科技前沿】（3条）：全球巨头本周最新前沿动向。
         每条格式同上。
@@ -145,7 +144,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
     ---
 
     ## 目录
-    （严格照抄 HTML 代码生成目录，不要用 Markdown）
+    （严格照抄 HTML 代码生成目录）
     ---
 
     ## 一、 重点企业动态
@@ -173,7 +172,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
         return f"生成简报失败: {e}"
 
 # ==========================================
-# 4. 邮件发送 (样式保持一致)
+# 4. 邮件发送
 # ==========================================
 def send_email(subject, markdown_content):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
@@ -195,7 +194,7 @@ def send_email(subject, markdown_content):
     """
 
     msg = MIMEMultipart()
-    msg['From'] = formataddr(("来自您的智能新闻官🤖", EMAIL_SENDER))
+    msg['From'] = formataddr(("来自您的超级智能新闻官🤖", EMAIL_SENDER))
     msg['To'] = ", ".join(receivers_list)
     msg['Subject'] = Header(subject, 'utf-8')
     msg.attach(MIMEText(full_html, 'html', 'utf-8'))
@@ -213,13 +212,15 @@ def send_email(subject, markdown_content):
 # 5. 执行主流程
 # ==========================================
 if __name__ == "__main__":
-    print(f"-> 启动报告生成器，当前日期: {TODAY_STR} ...")
+    if TRIGGER_EVENT == "schedule" and not is_first_workday_of_week():
+        print("今日非本周首个工作日，任务跳过。")
+        sys.exit(0)
 
     client = OpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") if not CUSTOM_API_KEY else OpenAI(api_key=CUSTOM_API_KEY, base_url=CUSTOM_BASE_URL)
     model = GEMINI_MODEL if not CUSTOM_API_KEY else CUSTOM_MODEL
     is_gem = not bool(CUSTOM_API_KEY)
 
-    print(f"-> 搜集重点与优质产能企业 (最大抓取量以满足15条)...")
+    print(f"-> 搜集重点与优质产能企业...")
     comp_raw = search_info(f"{TARGET_COMPANIES} OR 威海 荣成 文登 乳山 优质产能 新质生产力 出海 重点企业 最新商业新闻", max_results=30)
     
     print("-> 搜集大威海政经...")
@@ -235,10 +236,25 @@ if __name__ == "__main__":
     print("-> 搜集宏观局势...")
     macro_raw = search_info("中国宏观经济 全球局势 国际贸易 重大新闻")
     
-    print("-> 搜集科技与大模型排行榜...")
-    tech_raw = search_info("LMSYS Chatbot Arena 大语言模型 跑分排行榜 前十名 最新发布 人工智能 机器人 新能源 全球前沿动向", max_results=25)
+    # ---------------------------------------------------------
+    # 终极拦截：大模型榜单与科技前沿，启用严苛白名单机制
+    # ---------------------------------------------------------
+    AUTHORITATIVE_TECH_DOMAINS = [
+        "lmsys.org", "huggingface.co", "artificialanalysis.ai", # 官方权威榜单
+        "qbitai.com", "jiqizhixin.com", "36kr.com", "leiphone.com", "geekpark.net", # 国内高质量AI媒体
+        "techcrunch.com", "venturebeat.com", "theverge.com" # 国际权威科技媒体
+    ]
     
-    print("-> 智能新闻官正在撰写超级周报 (这可能需要近一分钟的时间)...")
+    print("-> 搜集权威大语言模型排行榜 (启用防内容农场白名单)...")
+    llm_leaderboard_raw = search_info("LMSYS Chatbot Arena 大语言模型 跑分排行榜 前十名 最新发布", max_results=10, include_domains=AUTHORITATIVE_TECH_DOMAINS)
+    
+    print("-> 搜集其他科技前沿 (AI/机器人/新能源)...")
+    tech_general_raw = search_info("人工智能 AI大模型 机器人 新能源 全球前沿动向 最新突破", max_results=20)
+    
+    # 组合为科技总素材
+    tech_raw = f"【权威大模型榜单专区（来自白名单）】\n{llm_leaderboard_raw}\n\n【其他科技进展】\n{tech_general_raw}"
+    
+    print("-> 智能新闻官正在撰写超级周报...")
     briefing = generate_briefing(client, model, is_gem, comp_raw, weihai_raw, industry_data, finance_raw, macro_raw, tech_raw)
     
     send_email(f"【威海商业情报】{TODAY_STR}", briefing)
