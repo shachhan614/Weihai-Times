@@ -76,7 +76,10 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
     【全局核心设定】
     1. 角色：顶尖投行研究所首席经济师。无修辞，无客套，极端客观。今天是{TODAY_STR}。
     2. 辖区绝对定义：下文中所有提到“大威海地区”、“威海市辖区”、“威海本地”的概念，均【严格且仅包含】威海、荣成、文登、乳山四个区域。
-    3. 严禁旧闻：仔细核查URL和内容年份，非近期内容一律舍弃。特例：LMSYS榜单无更新时输出特定话术。
+    3. 严格审查每条素材的时间:
+       - 如果内容涉及{TODAY_STR}之前一周以上的旧闻（例如提到往年旧数据、内容为发生在上个月的消息等类似的情况），绝对不予采纳！
+       - 拿旧闻凑数将被视为严重失职！
+       - 特例：LMSYS榜单无更新时输出特定话术。
 
     【极度严厉的排版与格式指令】
     1. 必须首先生成【目录】，严格照抄以下 HTML 格式：
@@ -126,7 +129,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     【输出框架】：
     # 威海营业部超级周报
-    **报告日期：** {TODAY_STR} | ** 来自您的超级智能新闻官🤖
+    **报告日期：** {TODAY_STR} | **来自您的超级智能新闻官🤖
     ---
     ## 目录
     （目录 HTML 代码）
@@ -243,7 +246,7 @@ if __name__ == "__main__":
     
     industry_data = {}
     for ind in INDUSTRY_LIST:
-        industry_data[ind] = search_info(f"{ind} 行业 市场规模 政策 发展趋势 全球 宏观 研报", max_results=10)
+        industry_data[ind] = search_info(f"{ind} 行业 市场规模 政策 发展趋势 全球 宏观 {CURRENT_YEAR}年研报", max_results=10)
         
     print("-> 搜集金融与银行业务...")
     # 拆分搜索：宏观指标与本地对公银行分离
