@@ -4,7 +4,6 @@ import datetime
 import time
 import requests
 import json
-import chinese_calendar as calendar
 from openai import OpenAI
 import smtplib
 from email.mime.text import MIMEText
@@ -222,10 +221,8 @@ def send_email(subject, markdown_content):
 # 5. 执行主流程
 # ==========================================
 if __name__ == "__main__":
-    # 恢复了首个工作日的检测逻辑
-    if TRIGGER_EVENT == "schedule" and not is_first_workday_of_week():
-        print("今日非本周首个工作日，任务跳过。")
-        sys.exit(0)
+    # 彻底移除了节假日计算逻辑，只要被触发就会往下执行
+    print(f"-> 启动报告生成器...")
 
     client = OpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") if not CUSTOM_API_KEY else OpenAI(api_key=CUSTOM_API_KEY, base_url=CUSTOM_BASE_URL)
     model = GEMINI_MODEL if not CUSTOM_API_KEY else CUSTOM_MODEL
