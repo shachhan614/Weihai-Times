@@ -75,23 +75,17 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     prompt = f"""
     【角色】
-    你是来自顶尖投行研究所的首席经济师。今天是{TODAY_STR}。所有新闻必须是本周最新动态。禁止修辞。
+    你是来自顶尖投行研究所的首席经济师，专精于宏观政治经济、国际金融、外贸行业动态以及高科技行业分析。今天是{TODAY_STR}。所有新闻必须是本周最新动态。禁止修辞。
 
     【极度严厉的排版与格式指令】
     1. 必须首先生成【目录】，然后输出正文。
     2. 【目录排版要求】：
-       绝对禁止把目录连成一段！为了精确控制字号（标题18px不加粗，正文14px），请在生成【目录】部分时，放弃 Markdown，严格照抄以下 HTML 格式：
+       绝对禁止把目录连成一段！为了精确控制字号（标题18px不加粗，正文14px），请在生成【目录】部分时，放弃 Markdown，严格照抄以下 HTML 格式，每个条目前加序号并紧跟 `<br>` 标签换行：
 
        <h3 style="color: #1a365d; font-size: 18px; font-weight: normal; margin-top: 20px; margin-bottom: 10px;">一、 重点企业动态</h3>
        <div style="font-size: 14px; color: #333; line-height: 1.8;">
        1. [新闻标题1]<br>
        2. [新闻标题2]<br>
-       ...
-       </div>
-
-       <h3 style="color: #1a365d; font-size: 18px; font-weight: normal; margin-top: 20px; margin-bottom: 10px;">二、 威海本地政经</h3>
-       <div style="font-size: 14px; color: #333; line-height: 1.8;">
-       1. [新闻标题1]<br>
        ...
        </div>
        （其余板块以此类推，必须严格使用 <h3> 和 <div><br> 结构！）
@@ -100,15 +94,15 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     【绝对时效性与 URL 年份查杀机制（防旧闻生死红线）】
     1. 你必须同步核查“文章发布时间”与“事件真实发生时间”。
-    2. URL 查杀：仔细检查我提供的每一个【来源】URL。如果网址中包含 "2024"、"2023" 或不属于本月的日期路径，说明是过期废料，【绝对禁止使用该条素材】！
+    2. URL 查杀：仔细检查我提供的每一个【来源】URL。如果网址中包含 "2025"、"2024"、"2023" 或不属于本月的日期路径，说明是过期废料，【绝对禁止使用该条素材】！
     3. 特例容错：如果在 lmsys.org 素材中找不到最近几天发布的新榜单，请不要强行编造，直接在第六部分第1条输出：“1. **LMSYS 官方排行榜本周无显著变动**\\n梗概：LMSYS 官方本周暂未发布新的大模型综合跑分变动。\\n关键词：LMSYS | 榜单稳定\\n来源：https://lmsys.org”
 
     【六大板块内容架构（不准缺漏）】
     一、 重点企业动态（必须15条）：
-        包含指定企业，同时深挖大威海地区符合新质生产力的优质产能企业。
+        包含指定企业，同时深挖大威海地区（威海、文登、荣成、乳山）符合“商业模式走得通、海外买家认可的新质生产力”的优质产能企业。。
         每条格式：
         序号. **[新闻标题]**
-        梗概：[用三句话精确概括核心事件、商业动作及影响]
+        [用三句话精确概括核心事件、商业动作及影响]
         关键词：[词1] | [词2]
         来源：[URL地址]
 
@@ -119,7 +113,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
         针对以下行业：{list(ind_data_dict.keys())}。每个行业必须提供 1条国内 + 1条国外 新闻。每条格式同上。
 
     四、 金融与银行（至少6条）：
-        包含国内外重大金融新闻及威海市辖区银行业务与政策。每条格式同上。
+        包含国内外重大金融新闻（美元/日元/欧元兑人民币汇率异动、LPR基准利率、美联储利率等会影响中国企业产能转移、对外投资、对外贸易的指标及价格变化），以及威海市辖区，即威海、荣成、乳山、文登的银行对公、国际业务新闻。不要包含零售金融业务的新闻。每条格式同上。
 
     五、 宏观与全球重点局势（必须7条）：
         3条国内宏观 + 4条国际重点局势。每条格式同上。
@@ -146,7 +140,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
     ---
 
     ## 目录
-    （严格照抄 HTML 代码生成目录）
+    （严格照抄 HTML 代码生成目录，不要用 Markdown）
     ---
 
     ## 一、 重点企业动态
@@ -187,7 +181,6 @@ def send_email(subject, markdown_content):
         body {{ font-family: 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; font-size: 16px; }} 
         h1 {{ color: #1a365d; font-size: 28px; border-bottom: 3px solid #1a365d; padding-bottom: 12px; }}
         h2 {{ color: #2c3e50; font-size: 22px; border-bottom: 1px dashed #ccc; padding-bottom: 8px; margin-top: 40px; }}
-        h3 {{ color: #1a365d; font-size: 18px; margin-top: 20px; font-weight: normal; }} 
         p {{ margin-bottom: 12px; }}
         a {{ color: #3498db; text-decoration: none; word-break: break-all; }}
         strong {{ color: #c0392b; }}
@@ -197,7 +190,7 @@ def send_email(subject, markdown_content):
     """
 
     msg = MIMEMultipart()
-    msg['From'] = formataddr(("来自您的超级智能新闻官🤖", EMAIL_SENDER))
+    msg['From'] = formataddr(("您的超级智能新闻官🤖", EMAIL_SENDER))
     msg['To'] = ", ".join(receivers_list)
     msg['Subject'] = Header(subject, 'utf-8')
     msg.attach(MIMEText(full_html, 'html', 'utf-8'))
