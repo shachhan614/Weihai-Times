@@ -75,7 +75,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     prompt = f"""
     【角色】
-    你是来自顶尖投行研究所的首席经济师，对宏观政策和经济、行业动态、公司发展都有深入的见解。。今天是{TODAY_STR}。所有新闻必须是本周最新动态。禁止修辞。
+    你是来自顶尖投行研究所的首席经济师。今天是{TODAY_STR}。所有新闻必须是本周最新动态。禁止修辞。
 
     【极度严厉的排版与格式指令】
     1. 必须首先生成【目录】，然后输出正文。
@@ -174,7 +174,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
         return f"生成简报失败: {e}"
 
 # ==========================================
-# 4. 邮件发送
+# 4. 邮件发送 (恢复双端口防断网重试机制)
 # ==========================================
 def send_email(subject, markdown_content):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
@@ -203,13 +203,24 @@ def send_email(subject, markdown_content):
     msg.attach(MIMEText(full_html, 'html', 'utf-8'))
 
     try:
+        print("尝试使用 SSL (端口 465) 发送邮件...")
         server = smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=30)
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.sendmail(EMAIL_SENDER, receivers_list, msg.as_string())
         server.quit()
-        print("✅ 简报发送成功")
-    except Exception as e:
-        print(f"❌ 发送失败: {e}")
+        print("✅ 简报发送成功 (465端口)")
+    except Exception as e1:
+        print(f"⚠️ 465 端口失败 ({e1})，正在尝试备用 STARTTLS (端口 587)...")
+        try:
+            time.sleep(3) 
+            server = smtplib.SMTP(SMTP_SERVER, 587, timeout=30)
+            server.starttls() 
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_SENDER, receivers_list, msg.as_string())
+            server.quit()
+            print("✅ 简报发送成功 (587端口)")
+        except Exception as e2:
+            print(f"❌ 邮件发送最终失败: {e2}")
 
 # ==========================================
 # 5. 执行主流程
@@ -232,7 +243,7 @@ if __name__ == "__main__":
         industry_data[ind] = search_info(f"{ind} 行业 中国 国际 最新 突发新闻")
         
     print("-> 搜集金融与银行业务...")
-    finance_raw = search_info("跨境结算 美元 日元 欧元 人民币 汇率变动 LPR 法定存款准备金 联邦基金利率 威海辖区银行 外汇 政策")
+    finance_raw = search_info("跨境结算 美元 日元 欧元 人民币 汇率变动 LPR 联邦基金利率 威海辖区银行 外汇 政策")
     
     print("-> 搜集宏观局势...")
     macro_raw = search_info("中国宏观经济 全球局势 国际贸易 重大新闻")
