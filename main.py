@@ -36,6 +36,7 @@ EMAIL_RECEIVERS = os.getenv("EMAIL_RECEIVERS")
 SMTP_SERVER = "smtp.qq.com" 
 
 TODAY_STR = datetime.date.today().strftime("%Y年%m月%d日")
+CURRENT_YEAR = datetime.date.today().year
 
 # ==========================================
 # 2. 增强搜索函数 (移除干扰词)
