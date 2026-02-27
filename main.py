@@ -4,7 +4,6 @@ import datetime
 import time
 import requests
 import json
-import chinese_calendar as calendar
 from openai import OpenAI
 import smtplib
 from email.mime.text import MIMEText
@@ -76,24 +75,25 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     【极度严厉的排版与格式指令】
     1. 你必须首先生成【目录】，然后再输出正文。
-    2. 【目录的终极排版要求（不准偏离半步）】：绝对禁止把目录连成一段！绝对禁止在目录中使用加粗(**)！
-       为了精确控制字号和强制换行，请务必照抄以下 HTML 混合格式生成目录（板块标题用 ###，新闻条目用 <br> 换行包裹在 div 里）：
-       
-       ### 一、 重点企业动态
-       <div style="font-size: 14px; font-weight: normal; color: #333; line-height: 1.8;">
+    2. 【目录的终极排版要求（极其重要）】：
+       绝对禁止把目录连成一段！必须强制换行！
+       为了精确控制字号（标题18px不加粗，正文14px），请在生成【目录】部分时，放弃 Markdown，严格照抄以下 HTML 格式，每个条目前加序号并紧跟 `<br>` 标签换行：
+
+       <h3 style="color: #1a365d; font-size: 18px; font-weight: normal; margin-top: 20px; margin-bottom: 10px;">一、 重点企业动态</h3>
+       <div style="font-size: 14px; color: #333; line-height: 1.8;">
        1. [新闻标题1]<br>
        2. [新闻标题2]<br>
        ...
        </div>
 
-       ### 二、 威海本地政经（含荣成、文登、乳山）
-       <div style="font-size: 14px; font-weight: normal; color: #333; line-height: 1.8;">
+       <h3 style="color: #1a365d; font-size: 18px; font-weight: normal; margin-top: 20px; margin-bottom: 10px;">二、 威海本地政经（含荣成、文登、乳山）</h3>
+       <div style="font-size: 14px; color: #333; line-height: 1.8;">
        1. [新闻标题1]<br>
        ...
        </div>
-       （其余六大板块以此类推，必须严格包含 <div> 和 <br>）
+       （其余六大板块以此类推，必须严格使用 <h3> 和 <div><br> 结构来编写目录！）
 
-    3. 正文部分：所有新闻的要素必须【垂直排版，另起一行】。
+    3. 正文部分：恢复使用 Markdown。所有新闻的要素必须【垂直排版，另起一行】。
 
     【六大板块内容架构（不准找借口缺漏）】
     一、 重点企业动态（必须凑齐15条）：
@@ -106,20 +106,29 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     二、 威海本地政经（含荣成、文登、乳山）（必须凑齐8条）：
         国内焦点（产业升级、招商引资、重大基建、营商环境、民生政策等威海本土政经新闻） 4条 + 国际与出海合作（威海企业海外订单、海外投资、跨境合作、外贸数据、国际展会等对外经贸新闻） 4条。
-        每条格式同上。（梗概：第一句事实，第二句影响，第三句意义）
+        每条格式：
+        序号. **[新闻标题]**
+        梗概：[第一句讲事实，第二句讲影响，第三句讲对威海经济发展和企业的意义]
+        关键词：[词1] | [词2]
+        来源：[URL地址]
 
     三、 行业风向（不受固定条数限制）：
-        针对以下行业：{list(ind_data_dict.keys())}。每个行业必须提供 1条国内 + 1条国外 新闻。每条格式同上。
+        针对以下行业：{list(ind_data_dict.keys())}。每个行业必须提供 1条国内 + 1条国外 新闻。
+        每条格式同上。
 
     四、 金融与银行（至少6条）：
-        包含国内外重大金融新闻（美元/日元/欧元兑人民币汇率异动、LPR基准利率等），以及威海市辖区银行业务与政策。每条格式同上。
+        包含国内外重大金融新闻（美元/日元/欧元兑人民币汇率异动、LPR基准利率、美联储利率等会影响中国企业产能转移、对外投资、对外贸易的指标及价格变化），以及威海市辖区，即威海、荣成、乳山、文登的银行业务与政策。
+        每条格式同上。
 
     五、 宏观与全球重点局势（必须7条）：
-        3条国内宏观 + 4条国际重点局势。每条格式同上。
+        3条国内宏观 + 4条国际重点局势。
+        每条格式同上。
 
     六、 科技前沿与大语言模型（必须9条）：
         分为三部分：
-        【大模型焦点】（4条）：第1条必为权威排行榜（如LMSYS）最新前十名榜单与解读。第2-4条必为近三天重磅新闻。
+        【大模型焦点】（4条）：
+        第1条：**必须是当天的权威普遍认可的大语言模型跑分排行榜（如LMSYS）最新前十名榜单与解读。**
+        第2-4条：大语言模型相关重磅新闻。注意时效性，一定要近三天最新。
         【中国科技进展】（2条）：AI/机器人/新能源等。
         【全球科技前沿】（3条）：全球巨头前沿动向。
         每条格式同上。
@@ -139,7 +148,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
     ---
 
     ## 目录
-    （严格使用带有 div 和 br 的强制换行格式生成）
+    （严格照抄规定的 <h3> 和 <div style="font-size: 14px;"> 配合 <br> 的 HTML 代码生成目录，绝对不要用 Markdown 列表）
     ---
 
     ## 一、 重点企业动态
@@ -165,7 +174,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     ## 六、 大语言模型与科技前沿
     **大模型焦点：**
-    （4条）
+    （4条，第一条必为权威排行榜前十名）
     **中国科技进展：**
     （2条）
     **全球科技前沿：**
@@ -188,7 +197,7 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
         return f"生成简报失败: {e}"
 
 # ==========================================
-# 4. 邮件发送 (分离并精修 CSS)
+# 4. 邮件发送
 # ==========================================
 def send_email(subject, markdown_content):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
@@ -201,10 +210,9 @@ def send_email(subject, markdown_content):
         body {{ font-family: 'Microsoft YaHei', sans-serif; line-height: 1.8; color: #333; font-size: 16px; }} 
         h1 {{ color: #1a365d; font-size: 28px; border-bottom: 3px solid #1a365d; padding-bottom: 12px; }}
         h2 {{ color: #2c3e50; font-size: 22px; border-bottom: 1px dashed #ccc; padding-bottom: 8px; margin-top: 40px; }}
-        h3 {{ color: #1a365d; font-size: 18px; margin-top: 20px; font-weight: normal; }} /* 针对目录标题：字号18px(+2px)，颜色改回深蓝，取消加粗 */
         p {{ margin-bottom: 12px; }}
         a {{ color: #3498db; text-decoration: none; word-break: break-all; }}
-        strong {{ color: #c0392b; }} /* 保留正文原有加粗变红的经典视觉效果 */
+        strong {{ color: #c0392b; }} /* 仅正文加粗的文字变红 */
     </style></head>
     <body>{html_content}</body>
     </html>
@@ -229,9 +237,7 @@ def send_email(subject, markdown_content):
 # 5. 执行主流程
 # ==========================================
 if __name__ == "__main__":
-    if TRIGGER_EVENT == "schedule" and not is_first_workday_of_week():
-        print("今日非本周首个工作日，任务跳过。")
-        sys.exit(0)
+    print(f"-> 启动报告生成器，当前日期: {TODAY_STR} ...")
 
     client = OpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") if not CUSTOM_API_KEY else OpenAI(api_key=CUSTOM_API_KEY, base_url=CUSTOM_BASE_URL)
     model = GEMINI_MODEL if not CUSTOM_API_KEY else CUSTOM_MODEL
