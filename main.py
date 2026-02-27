@@ -79,7 +79,8 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
     2. 辖区绝对定义：下文中所有提到“大威海地区”、“威海市辖区”、“威海本地”的概念，均【严格且仅包含】威海、荣成、文登、乳山四个区域。
     3. 严格审查每条素材的时间:
        - 如果内容涉及{TODAY_STR}之前一周以上的旧闻（例如提到往年旧数据、内容为发生在上个月的消息等类似的情况），绝对不予采纳！
-       - 拿旧闻凑数将被视为严重失职！
+       - 一个来源链接（URL）最多只能对应生成一条新闻！绝对禁止多条新闻重复使用同一个URL！
+       - 拿旧闻（{CURRENT_YEAR - 1}年及以前的内容、{TODAY_STR}之前一周以上的旧闻）凑数，或伪造虚假URL将被视为严重失职！
        - 特例：LMSYS榜单无更新时输出特定话术。
 
     【极度严厉的排版与格式指令】
@@ -100,10 +101,10 @@ def generate_briefing(client, model_name, is_gemini, comp_raw, weihai_raw, ind_d
 
     【六大板块内容架构（基于下方素材池）】
     一、 重点企业动态（15条）：
-        必须优先包含给定目标企业（{TARGET_COMPANIES}）的最新商业动态。其次补充威海市辖区内其他产品受海外认可、商业模式可行、符合新质生产力的优质产能企业。
+        必须优先包含给定目标企业（{TARGET_COMPANIES}）的最新商业动态。其次补充威海市辖区内其他产品受海外认可、商业模式可行、符合新质生产力的优质产能企业。注意，重点企业必须要严格限制在威海辖区内企业，严禁跨板块抓取内容。绝对禁止将阿里巴巴、字节跳动、宇树科技等不属于威海的全国性科技公司或通用AI新闻塞入此版块！
     
     二、 威海本地政经（8条）：
-        绝对排斥文化、旅游、社会奇闻。必须且只能聚焦：威海市辖区的宏观经济、重大招商引资、外经外贸政策、国际产能合作。
+        绝对排斥文化、旅游、社会奇闻。必须且只能聚焦：威海市辖区的宏观经济、重大招商引资、外经外贸政策、国际产能合作。当且仅当你判定没有2025年新闻
 
     三、 行业风向（每个行业2条）：
         针对素材池中的行业。禁止聚焦单一企业公关稿，必须提炼为券商研报视角的“行业级”发展、政策或宏观趋势。
@@ -237,26 +238,34 @@ if __name__ == "__main__":
     is_gem = not bool(CUSTOM_API_KEY)
 
     print(f"-> 搜集重点与优质产能企业...")
-    # 拆分搜索：确保指定企业不被淹没
-    comp_raw_target = search_info(f"{TARGET_COMPANIES} 签约 中标 财报 出海 布局 产能 最新动态", max_results=15)
-    comp_raw_weihai = search_info("威海 OR 荣成 OR 文登 OR 乳山 制造业 优质产能 外贸 新质生产力 企业 出海 -旅游 -文娱", max_results=15)
+    # 把目标企业列表里的空格替换成 OR，变成 "公司A OR 公司B OR 公司C"
+    target_or_str = TARGET_COMPANIES.replace(' ', ' OR ')
+    # 只要这几个公司有任何一个动作即可
+    comp_raw_target = search_info(f"({target_or_str}) (签约 OR 中标 OR 财报 OR 出海 OR 布局 OR 产能 OR 最新动态)", max_results=15)
+    
+    # 威海本地企业：只要满足任何一个好词即可
+    comp_raw_weihai = search_info("(威海 OR 荣成 OR 文登 OR 乳山) 企业 (制造业 OR 优质产能 OR 外贸 OR 新质生产力 OR 出海) -旅游 -文娱", max_results=15)
     comp_raw = f"【指定目标企业】\n{comp_raw_target}\n\n【威海其他优质企业】\n{comp_raw_weihai}"
     
     print("-> 搜集大威海政经...")
-    weihai_raw = search_info("威海 OR 荣成 OR 文登 OR 乳山 宏观经济 招商引资 政策 外经贸 国际产能合作 专精特新 产业集群 -旅游 -消费 -文化 -娱乐", max_results=20)
+    # 宏观政经：命中任何一个政经关键词即可
+    weihai_raw = search_info("(威海 OR 荣成 OR 文登 OR 乳山) (宏观经济 OR 招商引资 OR 政策 OR 外经贸 OR 国际产能合作 OR 专精特新 OR 产业集群) -旅游 -消费 -文化 -娱乐", max_results=20)
     
     industry_data = {}
     for ind in INDUSTRY_LIST:
-        industry_data[ind] = search_info(f"{ind} 行业 市场规模 政策 发展趋势 全球 宏观 {CURRENT_YEAR}年研报", max_results=10)
+        # 行业动态：放宽条件，不要逼着它找同时包含宏观、政策、研报的文章
+        industry_data[ind] = search_info(f"{ind}行业 (市场规模 OR 最新政策 OR 发展趋势 OR 全球宏观 OR 最新动态)", max_results=10)
         
     print("-> 搜集金融与银行业务...")
-    # 拆分搜索：宏观指标与本地对公银行分离
-    finance_macro_raw = search_info("LPR 存款准备金率 美联储联邦基金利率 USD EUR JPY GBP 兑人民币 汇率 变动", max_results=10)
-    bank_raw = search_info("威海 OR 荣成 OR 文登 OR 乳山 银行 跨境结算 国际业务 外汇便利化 对公业务 -零售金融 -个人理财", max_results=10)
+    # 宏观金融：命中任何一个指标即可
+    finance_macro_raw = search_info("(LPR OR 存款准备金率 OR 美联储利率 OR 汇率变动 OR 跨境人民币)", max_results=10)
+    
+    # 本地银行：只要是关于对公/外汇/跨境的任何业务即可
+    bank_raw = search_info("(威海 OR 荣成 OR 文登 OR 乳山) 银行 (跨境结算 OR 国际业务 OR 外汇便利化 OR 对公业务 OR 银企对接) -零售金融 -个人理财", max_results=10)
     finance_raw = f"【金融宏观数据】\n{finance_macro_raw}\n\n【威海辖区银行业务】\n{bank_raw}"
     
     print("-> 搜集宏观局势...")
-    macro_raw = search_info("中国宏观经济 全球局势 国际贸易 重大新闻")
+    macro_raw = search_info("(中国宏观经济 OR 全球局势 OR 国际贸易 OR 出海政策) 最新新闻")
     
     LMSYS_DOMAIN = ["lmsys.org"]
     TECH_MEDIA_DOMAINS = [
