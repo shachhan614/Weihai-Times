@@ -174,7 +174,7 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, f
 
     【输出框架】：
     # 威海营业部超级周报
-    **报告日期：** {TODAY_STR} | **来自您的超级智能新闻官🤖
+    **报告日期：** {TODAY_STR} | 来自您的超级智能新闻官🤖
     ---
     ## 目录
     （目录 HTML 代码）
