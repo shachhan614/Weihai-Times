@@ -202,8 +202,7 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, f
         response = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=8192  # <--- 新增这一行：彻底放开最大输出长度限制
+            temperature=0.1
         )
         return response.choices[0].message.content
     except Exception as e:
