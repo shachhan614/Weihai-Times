@@ -32,11 +32,11 @@ jobs:
           EMAIL_RECEIVERS: ${{ vars.EMAIL_RECEIVERS }}
           
           # ==========================================
-          # 2. 模型与搜索服务配置 (Secrets 配置)
+          # 2. 模型与搜索服务配置 (Secrets/Vars 配置)
           # ==========================================
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
-          GEMINI_REQUEST_DELAY: '3.0'
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          API_REQUEST_DELAY: '3.0'
           
           BOCHA_API_KEY: ${{ secrets.BOCHA_API_KEY }}
           
