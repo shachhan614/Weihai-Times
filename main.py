@@ -23,12 +23,12 @@ raw_industry = os.getenv("TARGET_INDUSTRY") or "工程承包 橡胶轮胎 医疗
 INDUSTRY_LIST = [i for i in raw_industry.replace('、', ' ').replace('，', ' ').split() if i]
 
 BOCHA_API_KEY = os.getenv("BOCHA_API_KEY")
-# 替换为 Bocha Web Search 的 Endpoint
 BOCHA_WEB_SEARCH_API_URL = "https://api.bocha.cn/v1/web-search"
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") 
-GEMINI_REQUEST_DELAY = float(os.getenv("GEMINI_REQUEST_DELAY", "3.0"))
+# 替换为 DeepSeek 配置
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat") 
+API_REQUEST_DELAY = float(os.getenv("API_REQUEST_DELAY", "3.0"))
 
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
@@ -48,18 +48,14 @@ OUTDATED_YEAR_PATTERN = re.compile(r'(201\d|202[0-5])')
 def search_info(query, days=7, max_results=20, include_domains=None):
     global GLOBAL_SEEN_URLS
     
-    # 根据天数映射到 Bocha 支持的 freshness 枚举值
     freshness = "oneWeek" if days <= 7 else "noLimit"
-    
-    # 根据官方文档，域名使用 | 分隔
     include_str = "|".join(include_domains) if include_domains else ""
 
-    # Web Search 请求体
     payload = {
         "query": query,
         "freshness": freshness,
-        "summary": True, # 开启文本摘要显示
-        "count": min(max_results, 50) # 最多50条
+        "summary": True, 
+        "count": min(max_results, 50) 
     }
     
     if include_str:
@@ -79,17 +75,13 @@ def search_info(query, days=7, max_results=20, include_domains=None):
         )
         response.raise_for_status()
         
-        # 解析返回的网页参考资料
         resp_json = response.json()
-        
-        # 兼容可能有或没有 'data' 包装层的返回格式
         data_block = resp_json.get("data", resp_json)
         webpages = data_block.get("webPages", {}).get("value", [])
         
         results_str = []
         
         for item in webpages:
-            # 组合 snippet 和 summary 作为内容，并截断防长文本
             snippet = item.get("snippet", "")
             summary = item.get("summary", "")
             raw_content = f"{snippet} {summary}".replace('\n', ' ')
@@ -97,7 +89,6 @@ def search_info(query, days=7, max_results=20, include_domains=None):
             source_url = item.get("url", "无来源链接")
             name = item.get("name", "无标题")
 
-            # 去重与旧闻拦截
             if source_url in GLOBAL_SEEN_URLS and source_url != '无来源链接':
                 continue
             if OUTDATED_YEAR_PATTERN.search(source_url) or OUTDATED_YEAR_PATTERN.search(content):
@@ -111,7 +102,7 @@ def search_info(query, days=7, max_results=20, include_domains=None):
         return f"搜索失败: {e}"
 
 # ==========================================
-# 3. 提示词与简报生成 (原封不动保留)
+# 3. 提示词与简报生成
 # ==========================================
 def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, finance_raw, macro_raw, tech_raw):
     ind_context = ""
@@ -208,7 +199,7 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, f
     <p style="text-align: center;">🤖我们下周再见🤖</p >
     """
     
-    time.sleep(GEMINI_REQUEST_DELAY)
+    time.sleep(API_REQUEST_DELAY)
 
     try:
         response = client.chat.completions.create(
@@ -274,24 +265,21 @@ def send_email(subject, markdown_content):
 if __name__ == "__main__":
     print(f"-> 启动报告生成器，当前日期: {TODAY_STR} ...")
 
-    print(f"-> 正在使用 Gemini 接口，模型: {GEMINI_MODEL}")
+    print(f"-> 正在使用 DeepSeek 接口，模型: {DEEPSEEK_MODEL}")
     client = OpenAI(
-        api_key=GEMINI_API_KEY, 
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=DEEPSEEK_API_KEY, 
+        base_url="https://api.deepseek.com",
         timeout=600.0
     )
-    model = GEMINI_MODEL
+    model = DEEPSEEK_MODEL
 
     print(f"-> 搜集重点与优质产能企业...")
     target_or_str = TARGET_COMPANIES.replace(' ', ' OR ')
-    # 加入 -股价 -涨停 -跌停 排除股市快讯
     comp_raw_target = search_info(f"({target_or_str}) (签约 OR 中标 OR 财报 OR 出海 OR 布局 OR 产能) -股价 -涨停 -跌停 -股市", max_results=45)
-    # 强制聚焦外贸出海，并强力排除旅游、餐饮、客运、银行和政务会议
     comp_raw_weihai = search_info("(威海 OR 荣成 OR 文登 OR 乳山) 企业 (外贸 OR 出海 OR 跨境电商 OR 国际业务 OR 海外订单) -旅游 -文娱 -餐饮 -客运 -银行 -股价 -动员大会 -招聘", max_results=45)
     comp_raw = f"【指定目标企业】\n{comp_raw_target}\n\n【威海其他出海企业】\n{comp_raw_weihai}"
     
     print("-> 搜集大威海政经...")
-    # 增加新质生产力、政府债务、工作部署等词汇，移除强制排除的消费/招聘以便获取少量素材
     weihai_raw = search_info("(威海 OR 荣成 OR 文登 OR 乳山) (宏观经济 OR 招商引资 OR 产业政策 OR 外经贸 OR 新质生产力 OR 政府债务 OR 工作部署 OR 消费数据 OR 招聘会) -奇闻 -事故", max_results=25)
     
     industry_data = {}
