@@ -2,8 +2,8 @@ name: Weekly Weihai Business Briefing (Pro Edition)
 
 on:
   schedule:
-    # 每周一北京时间早上9点运行 (UTC时间凌晨1点)
-    - cron: '0 1 * * 1'
+    # 每周一北京时间早上7点30分运行 (对应 UTC 时间每周日晚上 23:30)
+    - cron: '30 23 * * 0'
   workflow_dispatch: 
 
 jobs:
