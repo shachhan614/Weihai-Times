@@ -42,6 +42,16 @@ GLOBAL_SEEN_URLS = set()
 # 拦截旧闻正则
 OUTDATED_YEAR_PATTERN = re.compile(r'(201\d|202[0-5])')
 
+# 物理拦截黑名单（极其严格的本地生活与无关词汇池）
+JUNK_BLACKLIST = [
+    "天气", "降雨", "大风", "暴雪", "冰雹", "气象", # 天气类
+    "婚宴", "餐饮", "美食", "饭店", "小吃", "外卖", # 餐饮类
+    "幼儿园", "小学", "中学", "中考", "高考", "开学", # 教育类
+    "物业", "停水", "停电", "供暖", "公交", "绕行", # 社区民生类
+    "医院", "义诊", "诈骗", "交警", "车祸", "报警", # 社会治安类
+    "招聘会", "找工作", "相亲", "广场舞", "演唱会"  # 本地活动类
+]
+
 # ==========================================
 # 2. Bocha Web Search 请求与解析函数
 # ==========================================
@@ -81,13 +91,23 @@ def search_info(query, days=7, max_results=20, include_domains=None):
         
         results_str = []
         
-        for item in webpages:
+       for item in webpages:
             snippet = item.get("snippet", "")
             summary = item.get("summary", "")
             raw_content = f"{snippet} {summary}".replace('\n', ' ')
             content = raw_content[:250] 
             source_url = item.get("url", "无来源链接")
             name = item.get("name", "无标题")
+
+            # --- 新增的物理黑名单拦截逻辑 ---
+            is_junk = False
+            for junk_word in JUNK_BLACKLIST:
+                if junk_word in name or junk_word in content:
+                    is_junk = True
+                    break
+            if is_junk:
+                continue # 只要触碰黑名单，直接抛弃，不喂给大模型
+            # -------------------------------
 
             if source_url in GLOBAL_SEEN_URLS and source_url != '无来源链接':
                 continue
@@ -288,12 +308,14 @@ if __name__ == "__main__":
         industry_data[ind] = search_info(f"{ind}行业 (市场规模 OR 最新政策 OR 发展趋势 OR 全球宏观 OR 最新动态)", max_results=25)
         
     print("-> 搜集金融与银行业务...")
-    finance_macro_raw = search_info("(LPR OR 存款准备金率 OR 美联储利率 OR 汇率变动 OR 跨境人民币 OR 大宗 OR 美元 OR 石油 OR 黄金)", max_results=20)
-    bank_raw = search_info("(威海 OR 荣成 OR 文登 OR 乳山) 银行 (跨境结算 OR 国际业务 OR 外汇便利化 OR 对公业务 OR 银企对接 OR 出口信贷) -零售 -个人", max_results=20)
+    # 增加 -A股 -炒股 -超买 -技术分析 等排除词
+    finance_macro_raw = search_info("(LPR OR 存款准备金率 OR 美联储利率 OR 汇率变动 OR 跨境人民币 OR 大宗 OR 美元 OR 石油 OR 黄金) -A股 -炒股 -股市 -超买 -超卖 -技术分析", max_results=20)
+    bank_raw = search_info("(威海 OR 荣成 OR 文登 OR 乳山) 银行 (跨境结算 OR 国际业务 OR 外汇便利化 OR 对公业务 OR 银企对接 OR 出口信贷) -零售 -个人 -股价 -涨停", max_results=20)
     finance_raw = f"【金融宏观数据】\n{finance_macro_raw}\n\n【威海辖区银行业务】\n{bank_raw}"
     
     print("-> 搜集宏观局势...")
-    macro_raw = search_info("(中国宏观经济 OR 全球局势 OR 国际贸易 OR 出海政策 OR 突发事件 ) 最新新闻", max_results=35)
+    # 同样加上二级市场排除词
+    macro_raw = search_info("(中国宏观经济 OR 全球局势 OR 国际贸易 OR 出海政策 OR 突发事件) 最新新闻 -股市 -A股 -大盘", max_results=35)
     
     TECH_MEDIA_DOMAINS = [
         "qbitai.com", "jiqizhixin.com", "36kr.com", "leiphone.com", "geekpark.net",
