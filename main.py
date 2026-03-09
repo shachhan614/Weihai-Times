@@ -91,11 +91,11 @@ def search_info(query, days=7, max_results=20, include_domains=None):
         
         results_str = []
         
-       for item in webpages:
+        for item in webpages:  # 确保这里前面是标准的 8 个空格
             snippet = item.get("snippet", "")
             summary = item.get("summary", "")
             raw_content = f"{snippet} {summary}".replace('\n', ' ')
-            content = raw_content[:250] 
+            content = raw_content[:250]
             source_url = item.get("url", "无来源链接")
             name = item.get("name", "无标题")
 
