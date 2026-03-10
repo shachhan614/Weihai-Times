@@ -23,8 +23,8 @@ raw_industry = os.getenv("TARGET_INDUSTRY") or "工程承包 橡胶轮胎 医疗
 INDUSTRY_LIST = [i for i in raw_industry.replace('、', ' ').replace('，', ' ').split() if i]
 
 BOCHA_API_KEY = os.getenv("BOCHA_API_KEY")
-# 【严格遵照要求】：采用官方 AI Search 接口
-BOCHA_AI_SEARCH_API_URL = "https://api.bochaai.com/v1/ai-search"
+# 【致命Bug已修复】：替换为官方文档最新的正确域名
+BOCHA_AI_SEARCH_API_URL = "https://api.bocha.cn/v1/ai-search"
 
 # DeepSeek 配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
@@ -47,7 +47,7 @@ JUNK_BLACKLIST = [
     # 2. 人事与日常采购
     "招聘", "找工作", "办公用品", "政府采购", "信息公示平台", "就业管理",
     
-    # 3. 二级市场与炒股（移除大范围词，保留精准打击词，防止误伤上市实体企业）
+    # 3. 二级市场与炒股（保留精准打击词，防止误伤上市实体企业）
     "涨停", "跌停", "超买", "超卖", "多空", "资金净流入", "资金净流出", 
     "龙虎榜", "证券研报", "上行", "拐点", "持仓", "避险",
     "异常波动", "异动公告", "竞价交易", "减持", "增持", "主力资金", "证券策略", "牛市", "熊市", "个股",
@@ -306,7 +306,6 @@ if __name__ == "__main__":
 
     print(f"-> 搜集重点与优质产能企业...")
     target_or_str = TARGET_COMPANIES.replace(' ', ' OR ')
-    # 精简搜索词，防止被搜索引擎吞掉结果
     comp_raw_target = search_info(f"{target_or_str} (签约 OR 中标 OR 财报 OR 出海 OR 产能) -股市", max_results=40)
     comp_raw_weihai = search_info("威海 企业 (外贸 OR 出海 OR 跨境电商 OR 国际业务 OR 投资) -旅游 -餐饮", max_results=40)
     comp_raw = f"【指定目标企业】\n{comp_raw_target}\n\n【威海其他出海企业】\n{comp_raw_weihai}"
