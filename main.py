@@ -4,6 +4,7 @@ import datetime
 import time
 import requests
 import json
+import re
 from openai import OpenAI
 import smtplib
 from email.mime.text import MIMEText
@@ -22,7 +23,7 @@ raw_industry = os.getenv("TARGET_INDUSTRY") or "工程承包 橡胶轮胎 医疗
 INDUSTRY_LIST = [i for i in raw_industry.replace('、', ' ').replace('，', ' ').split() if i]
 
 BOCHA_API_KEY = os.getenv("BOCHA_API_KEY")
-# 采用官方 AI Search 接口
+# 【严格遵照要求】：采用官方 AI Search 接口
 BOCHA_AI_SEARCH_API_URL = "https://api.bochaai.com/v1/ai-search"
 
 # DeepSeek 配置
@@ -46,10 +47,10 @@ JUNK_BLACKLIST = [
     # 2. 人事与日常采购
     "招聘", "找工作", "办公用品", "政府采购", "信息公示平台", "就业管理",
     
-    # 3. 二级市场与炒股（一击必杀）
-    "股价", "A股", "大盘", "涨停", "跌停", "超买", "超卖", "多空",
-    "资金净流入", "资金净流出", "龙虎榜", "证券研报", "上行", "拐点", "持仓", "避险",
-    "异常波动", "异动公告", "股票交易", "竞价交易", "减持", "增持", "主力资金", "证券策略", "牛市", "熊市", "个股",
+    # 3. 二级市场与炒股（移除大范围词，保留精准打击词，防止误伤上市实体企业）
+    "涨停", "跌停", "超买", "超卖", "多空", "资金净流入", "资金净流出", 
+    "龙虎榜", "证券研报", "上行", "拐点", "持仓", "避险",
+    "异常波动", "异动公告", "竞价交易", "减持", "增持", "主力资金", "证券策略", "牛市", "熊市", "个股",
     
     # 4. 基础民生与社会治安
     "天气", "降雨", "气象", "婚宴", "餐饮", "幼儿园", "小学", "中学", "高考",
@@ -66,7 +67,7 @@ def search_info(query, max_results=20, include_domains=None):
 
     payload = {
         "query": query,
-        "freshness": "oneWeek", # 【绝对红线】：通过 API 物理锁死只抓取最近 7 天的新闻
+        "freshness": "oneWeek", # 【绝对红线】：物理锁死只抓取最近 7 天的新闻
         "answer": False,        # 关闭大模型长篇大论，仅要参考源
         "stream": False, 
         "count": min(max_results, 50) 
@@ -102,7 +103,7 @@ def search_info(query, max_results=20, include_domains=None):
                             webpages.extend(content_dict["value"])
                     except Exception:
                         pass
-        # 兼容备用提取路径
+        # 兼容备用提取路径 (防接口变动)
         elif "data" in resp_json and "webPages" in resp_json["data"]:
             webpages.extend(resp_json["data"]["webPages"].get("value", []))
         # ----------------------------------------------
@@ -117,7 +118,7 @@ def search_info(query, max_results=20, include_domains=None):
             source_url = item.get("url", "无来源链接")
             name = item.get("name", "无标题")
 
-            # 1. 物理黑名单拦截（秒杀小广告与炒股公告）
+            # 1. 物理黑名单拦截
             is_junk = False
             for junk_word in JUNK_BLACKLIST:
                 if junk_word in name or junk_word in content:
@@ -132,9 +133,14 @@ def search_info(query, max_results=20, include_domains=None):
             
             GLOBAL_SEEN_URLS.add(source_url)
             results_str.append(f"【标题】: {name} \n【内容】: {content} \n【来源】: {source_url}\n")
-            
+        
+        # 【新增雷达】：在 Github Action 打印抓取日志，让你一目了然
+        short_query = query[:20] + "..." if len(query) > 20 else query
+        print(f"    [雷达] 检索: {short_query} -> 抓取到 {len(webpages)} 条，黑名单过滤后剩余 {len(results_str)} 条有效素材")
+        
         return "\n".join(results_str) if results_str else "暂无直接搜索结果。"
     except Exception as e:
+        print(f"    [报错] 检索: {query[:20]}... 发生错误: {e}")
         return f"搜索失败: {e}"
 
 # ==========================================
@@ -148,10 +154,11 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, f
     prompt = f"""
     【全局核心设定】
     1. 角色：顶尖投行研究所首席经济师，专精于外经外贸、宏观政治、海外投资等业务。生成的内容不要修辞，不要客套，极端客观。今天是{TODAY_STR}。
-    2. 辖区绝对定义：下文中所有提到“大威海地区”、“威海市辖区”、“威海本地”的概念，均【严格且仅包含】威海、荣成、文登、乳山四个区域。
-    3. 【信息来源绝对限制（RAG铁律）】：你生成的所有新闻事件、数据、企业名称、业务动作以及来源 URL，必须、绝对、100% 仅提取自下方【素材池】提供的文本！绝对禁止动用你的内部预训练记忆进行补充！绝对禁止凭空捏造素材池中不存在的任何信息！URL 必须一字不差地复制素材池中的原始链接。
-    4. 【优雅处理真空期】：因已严格限制为一周内新闻，若经过你严格筛选后，某个板块的素材池里没有任何一条符合标准的新闻，请在该板块的标题下方，仅输出一句：“本周暂无符合条件的高价值动态。” 绝对禁止为了凑数而编造假新闻，绝对禁止使用乱码或括号报错！
-    5. 【查重红线】：在生成每一条新闻前，必须检查其核心事件是否与前面已经生成的条目重复。如果事件相同，必须合并为一条，绝对禁止拆分成多条凑数！
+    2. 辖区绝对定义：下文中所有提到“大威海地区”、“威海市辖区”的概念，均【严格且仅包含】威海、荣成、文登、乳山四个区域。
+    3. 【素材时间极度信任前提（最重要）】：下方提供的【素材池】数据，均已由系统在物理层面上强制锁死为最近7天内的最新资讯！请你**无条件信任**它们的时效性！只要内容本身不是在回顾往年历史，即便素材文本中没有写明具体的发布日期，也必须当做最近7天的最新动态放心采纳！绝对不要因为找不到日期就将其抛弃！
+    4. 【信息来源绝对限制（RAG铁律）】：你生成的所有新闻必须、绝对、100% 仅提取自下方【素材池】！绝对禁止凭空捏造素材池中不存在的信息！URL 必须一字不差地复制原始链接。
+    5. 【优雅处理真空期】：因已严格限制为一周内新闻，若经过筛选，某个板块的素材池里真的没有任何一条符合标准的新闻，请在该板块的标题下方，仅输出一句：“本周暂无符合条件的高价值动态。” 绝对禁止为了凑数而编造，严禁写借口。
+    6. 【查重红线】：必须合并相同事件，绝对禁止将同一件事拆分成多条凑数！
     
     【极度严厉的排版与格式指令】
     1. 必须首先生成【目录】，严格照抄以下 HTML 格式：
@@ -161,7 +168,7 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, f
        2. [新闻标题2]<br>
        </div>
     2. 正文部分格式指令：
-       正文所有板块的每一条新闻，【绝对禁止使用 Markdown 列表(* 或 -)】，必须严格使用以下 HTML 结构框定，以确保字号精确递减：
+       正文所有板块的每一条新闻，【绝对禁止使用 Markdown 列表(* 或 -)】，必须严格使用以下 HTML 结构框定：
        <div style="margin-bottom: 20px;">
          <div style="font-size: 14px; font-weight: bold; color: #333;">[序号]. [标题]</div>
          <div style="font-size: 14px; color: #333; line-height: 1.6; margin-top: 4px;">[用三句话精确概括核心事件、商业动作及影响]</div>
@@ -171,23 +178,22 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, f
 
     【六大板块内容架构（基于下方素材池）】
     一、 重点企业动态（最多生成 15 条）：
-        【收录标准】：必须且只能是具体的实体企业。企业必须有明确的涉外属性（国际业务、海外投资、出口订单、外贸潜力）或重大的实体产能扩建。优先包含给定目标企业（{TARGET_COMPANIES}）的业务动态。
-        注意，企业必须严格限制在威海辖区内，绝对禁止纳入非威海的全国性科技公司！绝对不允许拿招聘、厂房出租等无关内容凑数！
+        【收录标准】：必须是实体企业。企业必须有明确的涉外属性（国际业务、海外投资、出口订单、外贸潜力）或重大的实体产能扩建。优先包含给定目标企业（{TARGET_COMPANIES}）。
+        注意，企业必须严格限制在威海辖区内！绝对不允许拿无关内容凑数！
     
     二、 威海本地政经（最多生成 8 条）：
-        【收录与配比标准】：
         1. 核心政经与产业（6至8条）：必须聚焦威海市辖区的产业发展、外经外贸、重大招商引资、新质生产力、重大会议、工作部署等。
-        2. 民生与消费（最高限额 2 条）：国内消费市场、文旅活动等社会民生新闻【严格限制在 2 条以内】。
+        2. 民生与消费（最高限额 2 条）：国内消费市场、文旅活动等社会民生新闻。
 
     三、 行业风向（强制生成每个行业最多 2 条）：
-        禁止聚焦单一企业公关稿。新闻内容须为行业内最新突破、重大利好或利空、可能影响行业的重要事件及其影响。
+        新闻内容须为行业内最新突破、重大利好或利空、可能影响行业的重要事件及其影响。
 
     四、 金融与银行（最多生成 10 条）：
-        1. 金融宏观：LPR、存款准备金率、美联储利率、汇率等发生重大变化或其他有出海需求的中国大陆企业应当关注的其他新闻。
-        2. 本地银行：新闻主体严格限制在威海市分行及其下属支行，关于跨境结算、对公业务、出口信贷等方面出台新优惠政策或其他领域的新闻。
+        1. 金融宏观：LPR、存款准备金率、美联储利率、汇率等发生重大变化或其他有出海需求的中国大陆企业应当关注的新闻。
+        2. 本地银行：新闻主体严格限制在威海市分行及其下属支行，关于跨境结算、对公业务、出口信贷等方面出台新优惠政策。
 
     五、 宏观与全球重点局势（最多生成 7 条）：
-        国内与国际政治经济、贸易局势、突发事件重大新闻。其中国内必须包含最新的国家级产业政策、规划。国际包含地缘政治、战争动态等。
+        国内与国际政治经济、贸易局势、突发事件重大新闻。其中国内必须包含最新的国家级产业政策、规划。国际包含地缘政治、贸易战等。
 
     六、 科技前沿与大语言模型（最多生成 9 条）：
         全面汇总大语言模型最新焦点、中国科技进展及全球前沿动向。
@@ -300,27 +306,28 @@ if __name__ == "__main__":
 
     print(f"-> 搜集重点与优质产能企业...")
     target_or_str = TARGET_COMPANIES.replace(' ', ' OR ')
-    comp_raw_target = search_info(f"({target_or_str}) (签约 OR 中标 OR 财报 OR 出海 OR 布局 OR 产能) -股价 -涨停 -跌停 -股市", max_results=55)
-    comp_raw_weihai = search_info("(威海 OR 荣成 OR 文登 OR 乳山) 企业 (外贸 OR 出海 OR 跨境电商 OR 国际业务 OR 海外订单 OR 投资) -旅游 -文娱 -餐饮 -客运 -银行 -股价 -动员大会 -招聘 -房产", max_results=65)
+    # 精简搜索词，防止被搜索引擎吞掉结果
+    comp_raw_target = search_info(f"{target_or_str} (签约 OR 中标 OR 财报 OR 出海 OR 产能) -股市", max_results=40)
+    comp_raw_weihai = search_info("威海 企业 (外贸 OR 出海 OR 跨境电商 OR 国际业务 OR 投资) -旅游 -餐饮", max_results=40)
     comp_raw = f"【指定目标企业】\n{comp_raw_target}\n\n【威海其他出海企业】\n{comp_raw_weihai}"
     
     print("-> 搜集大威海政经...")
-    weihai_raw = search_info("(威海 OR 荣成 OR 文登 OR 乳山) (宏观经济 OR 招商引资 OR 产业政策 OR 外经贸 OR 新质生产力 OR 政府债务 OR 工作部署 OR 消费数据 OR 走访 OR 调研 OR 市长 OR 书记) -奇闻 -事故 -学校", max_results=25)
+    weihai_raw = search_info("威海 (宏观经济 OR 招商引资 OR 产业政策 OR 外经贸 OR 新质生产力 OR 项目) -学校", max_results=35)
     
     industry_data = {}
     for ind in INDUSTRY_LIST:
-        industry_data[ind] = search_info(f"{ind}行业 (市场规模 OR 最新政策 OR 发展趋势 OR 全球宏观 OR 最新动态)", max_results=25)
+        industry_data[ind] = search_info(f"{ind}行业 (市场规模 OR 政策 OR 发展趋势 OR 最新动态) -A股", max_results=20)
         
     print("-> 搜集金融与银行业务...")
-    finance_macro_raw = search_info("(LPR OR 存款准备金率 OR 美联储利率 OR 汇率变动 OR 跨境人民币 OR 大宗 OR 美元 OR 石油 OR 黄金) -A股 -炒股 -股市 -超买 -超卖 -技术分析", max_results=20)
-    bank_raw = search_info("(威海 OR 荣成 OR 文登 OR 乳山) 银行 (跨境结算 OR 国际业务 OR 外汇便利化 OR 对公业务 OR 银企对接 OR 出口信贷) -零售 -个人 -股价 -涨停", max_results=20)
+    finance_macro_raw = search_info("LPR OR 美联储利率 OR 汇率变动 OR 大宗商品 OR 关税", max_results=20)
+    bank_raw = search_info("威海 银行 (跨境结算 OR 国际业务 OR 对公业务 OR 出口信贷) -零售", max_results=20)
     finance_raw = f"【金融宏观数据】\n{finance_macro_raw}\n\n【威海辖区银行业务】\n{bank_raw}"
     
     print("-> 搜集国内宏观与产业政策...")
-    macro_domestic = search_info("(中国宏观经济 OR 产业政策 OR 进出口数据 OR 发改委 OR 工信部 OR 商务部 OR 国务院 OR 财政部) (最新政策 OR 规划 OR 部署 OR 数据 OR 发布) -股市 -A股 -大盘 -炒股 -证券研报 -牛市 -异动", max_results=25)
+    macro_domestic = search_info("国家发改委 OR 工信部 OR 商务部 OR 国务院 (产业政策 OR 宏观经济 OR 进出口数据) 最新", max_results=25)
     
     print("-> 搜集国际地缘与经贸局势...")
-    macro_intl = search_info("(全球局势 OR 国际贸易 OR 地缘政治 OR 关税政策 OR 突发事件 OR 冲突 OR 换届 OR 选举 OR 战争) -股市 -A股 -股票", max_results=25)
+    macro_intl = search_info("国际贸易 OR 地缘政治 OR 关税政策 OR 美伊局势 OR 俄乌局势", max_results=25)
     
     macro_raw = f"【国内宏观与产业政策素材池】\n{macro_domestic}\n\n【国际地缘与经贸局势素材池】\n{macro_intl}"
     
@@ -330,7 +337,7 @@ if __name__ == "__main__":
     ]
     
     print("-> 搜集科技前沿 (AI/大模型/机器人/新能源)...")
-    tech_raw = search_info("(人工智能 OR 大语言模型 OR 机器人 OR 新能源) (前沿动向 OR 最新突破)", max_results=25, include_domains=TECH_MEDIA_DOMAINS)
+    tech_raw = search_info("AI OR 大模型 OR 机器人 OR 新能源 最新突破", max_results=25, include_domains=TECH_MEDIA_DOMAINS)
     
     print("-> 智能新闻官正在撰写超级周报...")
     briefing = generate_briefing(client, model, comp_raw, weihai_raw, industry_data, finance_raw, macro_raw, tech_raw)
