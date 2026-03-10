@@ -292,7 +292,8 @@ if __name__ == "__main__":
 
     print(f"-> 搜集重点与优质产能企业...")
     target_or_str = TARGET_COMPANIES.replace(' ', ' OR ')
-    comp_raw_target = search_info(f"{target_or_str} (签约 OR 中标 OR 财报 OR 出海 OR 产能) -股市", max_results=40)
+  # 注意 {target_or_str} 外面的那对小括号！
+    comp_raw_target = search_info(f"({target_or_str}) (签约 OR 中标 OR 财报 OR 出海 OR 产能) -股市", max_results=40)
     comp_raw_weihai = search_info("威海 企业 (外贸 OR 出海 OR 跨境电商 OR 国际业务 OR 投资) -旅游 -餐饮", max_results=40)
     comp_raw = f"【指定目标企业】\n{comp_raw_target}\n\n【威海其他出海企业】\n{comp_raw_weihai}"
     
