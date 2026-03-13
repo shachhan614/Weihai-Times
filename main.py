@@ -18,7 +18,7 @@ import markdown
 raw_companies = os.getenv("TARGET_COMPANIES") or "山东未来机器人有限公司 威海广泰 威海国际经济技术合作股份有限公司 双丰物探 威尔海姆 迪尚集团"
 TARGET_COMPANIES = raw_companies.replace('、', ' ').replace('，', ' ') 
 
-raw_industry = os.getenv("TARGET_INDUSTRY") or "工程承包 橡胶轮胎 医疗器械 油气装备 机器人"
+raw_industry = os.getenv("TARGET_INDUSTRY") or "工程承包 橡胶 轮胎 纺织 医疗器械 油气装备 机器人"
 INDUSTRY_LIST = [i for i in raw_industry.replace('、', ' ').replace('，', ' ').split() if i]
 
 # 巨头名单（建议在此处或环境变量中加入“巴林国家石油公司”以防媒体用全称）
