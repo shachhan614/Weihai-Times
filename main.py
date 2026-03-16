@@ -21,14 +21,12 @@ TARGET_COMPANIES = raw_companies.replace('、', ' ').replace('，', ' ')
 raw_industry = os.getenv("TARGET_INDUSTRY") or "工程承包 橡胶 轮胎 纺织 医疗器械 油气装备 机器人"
 INDUSTRY_LIST = [i for i in raw_industry.replace('、', ' ').replace('，', ' ').split() if i]
 
-# 巨头名单（建议在此处或环境变量中加入“巴林国家石油公司”以防媒体用全称）
 raw_giants = os.getenv("INDUSTRY_GIANTS") or "巴林石油 巴林国家石油公司 Bapco 沙特阿美 Aramco 丹格特 Dangote 马士基 Maersk"
 GIANTS_LIST = [i for i in raw_giants.replace('、', ' ').replace('，', ' ').split() if i]
 
 BOCHA_API_KEY = os.getenv("BOCHA_API_KEY")
 BOCHA_WEB_SEARCH_API_URL = "https://api.bocha.cn/v1/web-search"
 
-# DeepSeek 配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat") 
 API_REQUEST_DELAY = float(os.getenv("API_REQUEST_DELAY", "3.0"))
@@ -41,17 +39,19 @@ SMTP_SERVER = "smtp.qq.com"
 TODAY_STR = datetime.date.today().strftime("%Y年%m月%d日")
 GLOBAL_SEEN_URLS = set()
 
-# 物理拦截黑名单（史诗级加强：彻底封杀文旅、股市黑话、杂鱼招标）
+# 物理拦截黑名单（史诗级加强：加入全部企业后勤杂务、招投标、股民交流词汇）
 JUNK_BLACKLIST = [
-    # 房产与杂务
+    # 房产与后勤杂务
     "出租", "招租", "日租", "写字楼", "厂房", "商铺", "转让", "物业", 
     "招聘", "找工作", "办公用品", "政府采购", "信息公示平台", "就业管理", "印刷项目", "安保服务",
+    # 彻底封杀招投标、采购、外包等低价值动态
+    "招标", "投标", "中标候选人", "采购", "询比价", "询价", "评标", "劳务外包", "水土保持", "供应商征集",
     # 二级市场、券商研报与股市黑话
     "涨停", "跌停", "超买", "超卖", "多空", "资金净流入", "资金净流出", 
     "龙虎榜", "证券研报", "上行", "拐点", "持仓", "避险", "指数", "收盘报", 
     "ETF", "评级", "港交所", "联交所", "港股", "收盘价", "看好评级", "买入评级",
     "异常波动", "异动公告", "竞价交易", "减持", "增持", "主力资金", "证券策略", "牛市", "熊市", "个股",
-    "走高", "走低", "大幅波动", "报收", "领涨", "领跌", "盘中", "A股板块",
+    "走高", "走低", "大幅波动", "报收", "领涨", "领跌", "盘中", "A股板块", "股份回购", "投资者关系", "调研记录",
     # C端民生、补贴、旅游美食、零售理财
     "天气", "降雨", "气象", "婚宴", "餐饮", "幼儿园", "小学", "中学", "高考",
     "医院", "义诊", "交警", "车祸", "报警", "诈骗", "演唱会", "停水", "停电",
@@ -69,7 +69,7 @@ def search_info(query, max_results=20, include_domains=None):
 
     payload = {
         "query": query,
-        "freshness": "oneWeek", # 物理锁死只抓取最近 7 天
+        "freshness": "oneWeek",
         "summary": True,
         "count": min(max_results, 50) 
     }
@@ -105,7 +105,6 @@ def search_info(query, max_results=20, include_domains=None):
             source_url = item.get("url", "无来源链接")
             name = item.get("name", "无标题")
 
-            # 黑名单物理拦截
             is_junk = False
             for junk_word in JUNK_BLACKLIST:
                 if junk_word in name or junk_word in content:
@@ -114,7 +113,6 @@ def search_info(query, max_results=20, include_domains=None):
             if is_junk:
                 continue
 
-            # 去重
             if source_url in GLOBAL_SEEN_URLS and source_url != '无来源链接':
                 continue
             
@@ -137,7 +135,6 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, g
     for ind, content in ind_data_dict.items():
         ind_context += f"--- 行业泛资讯: {ind} ---\n{content}\n"
 
-    # 重大事件检测扩容逻辑
     major_events_keywords = ["两会", "中东冲突", "俄乌", "美伊", "人大", "政协", "政府工作报告", "不可抗力"]
     is_major_event_active = any(kw in macro_raw for kw in major_events_keywords)
     
@@ -172,7 +169,8 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, g
 
     【六大板块内容架构（基于下方素材池）】
     一、 重点企业动态（最多 15 条）：
-        【实体鉴别红线】：新闻主体必须是特定且具名的单一实体企业。优先报道核心出海业务、产能扩建、海外中标。绝对禁止放入“威海印发政策”等政府新闻，绝对剔除印刷评标等杂碎采购！
+        【主语属地审查死命令】：新闻的主体（公司名称）必须带有“威海”、“山东”前缀，或者是你在目标企业名单中看到的名字。如果新闻的主体是“江苏XX”、“深圳XX”、“四川XX”、“德阳XX”等外地企业，哪怕它的内容里提到了威海，也【绝对禁止】纳入！直接删除！
+        【业务红线】：优先报道核心出海业务、产能扩建、重大战略合作。绝对禁止纳入任何形式的国内“土建工程中标”、“采购询价”、“劳务外包”、“投资者关系活动记录”、“股份回购”。发现直接剔除！
     
     二、 威海本地政经（最多 8 条）：
         【收录标准】：威海辖区重大的外经外贸政策、海关监管创新（如跨境前置仓）、大型招商引资、重大会议部署。
@@ -293,7 +291,6 @@ def send_email(subject, markdown_content):
 if __name__ == "__main__":
     print(f"-> 启动报告生成器，当前日期: {TODAY_STR} ...")
 
-    print(f"-> 正在使用 DeepSeek 接口，模型: {DEEPSEEK_MODEL}")
     client = OpenAI(
         api_key=DEEPSEEK_API_KEY, 
         base_url="https://api.deepseek.com",
@@ -305,30 +302,29 @@ if __name__ == "__main__":
     comp_raw_target = ""
     for comp in TARGET_COMPANIES.split():
         if not comp: continue
-        res = search_info(f"{comp} -股票 -收盘 -涨停 -跌停 -招标公告 -采购", max_results=30)
+        res = search_info(f"{comp}", max_results=30)
         comp_raw_target += f"【{comp} 相关动态】\n{res}\n"
         
-    comp_raw_weihai = search_info("威海 (企业 OR 集团) (外贸 OR 出海 OR 跨境 OR 投资 OR 出口 OR 产能) -旅游", max_results=30)
+    comp_raw_weihai = search_info("威海 (企业 OR 集团) (外贸 OR 出海 OR 跨境 OR 投资 OR 出口 OR 产能)", max_results=30)
     comp_raw = f"{comp_raw_target}\n\n【威海其他出海企业】\n{comp_raw_weihai}"
     
     print("-> 搜集大威海政经...")
-    weihai_raw = search_info("威海 (宏观经济 OR 招商引资 OR 产业政策 OR 外经贸 OR 新质生产力 OR 项目 OR 会议) -学校 -交通事故 -天气 -旅游 -文旅 -美食", max_results=35)
+    weihai_raw = search_info("威海 (宏观经济 OR 招商引资 OR 产业政策 OR 外经贸 OR 新质生产力 OR 项目 OR 会议)", max_results=35)
     
     print("-> 搜集行业风向与巨头情报...")
     industry_data = {}
     for ind in INDUSTRY_LIST:
-        industry_data[ind] = search_info(f"{ind} (技术突破 OR 产业政策 OR 发展趋势 OR 全球市场) -A股 -指数 -板块 -收盘", max_results=25)
+        industry_data[ind] = search_info(f"{ind} (技术突破 OR 产业政策 OR 发展趋势 OR 全球市场)", max_results=25)
     
     giants_raw = ""
     if GIANTS_LIST:
         giants_str = " OR ".join(GIANTS_LIST)
-        # 【致胜修改】：彻底去掉巨头的限制词，无论不可抗力还是财报，全部抓走！
-        giants_raw = search_info(f"({giants_str}) -股票 -大盘 -板块 -收盘 -涨停 -跌停", max_results=40)
+        giants_raw = search_info(f"({giants_str})", max_results=40)
         
     print("-> 搜集金融与银行业务...")
     exchange_rate_raw = search_info("美元兑人民币 中间价 汇率 最新报道", max_results=15)
-    finance_macro_raw = search_info("(中国人民银行 OR 央行 OR 国家外汇管理局 OR 财政部 OR 美联储) (货币政策 OR LPR OR 降准 OR 降息 OR 外汇) -A股 -股市", max_results=20)
-    bank_raw = search_info("威海 (银行 OR 分行) (跨境结算 OR 国际业务 OR 对公业务 OR 出口信贷) -理财 -零售 -港股", max_results=15)
+    finance_macro_raw = search_info("(中国人民银行 OR 央行 OR 国家外汇管理局 OR 财政部 OR 美联储) (货币政策 OR LPR OR 降准 OR 降息 OR 外汇)", max_results=20)
+    bank_raw = search_info("威海 (银行 OR 分行) (跨境结算 OR 国际业务 OR 对公业务 OR 出口信贷)", max_results=15)
     finance_raw = f"【汇率强制置顶数据】\n{exchange_rate_raw}\n\n【国家金融宏观数据】\n{finance_macro_raw}\n\n【威海辖区银行业务】\n{bank_raw}"
     
     print("-> 搜集国内宏观与产业政策...")
