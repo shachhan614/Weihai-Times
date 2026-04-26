@@ -25,23 +25,23 @@ jobs:
       - name: Run Briefing Script
         env:
           # ==========================================
-          # 1. 业务定制变量 (在 GitHub Variables 中配置)
+          # 1. 业务定制变量
           # ==========================================
           TARGET_COMPANIES: ${{ vars.TARGET_COMPANIES }}
           TARGET_INDUSTRY: ${{ vars.TARGET_INDUSTRY }}
           EMAIL_RECEIVERS: ${{ vars.EMAIL_RECEIVERS }}
           
           # ==========================================
-          # 2. 模型与搜索服务配置 (Secrets/Vars 配置)
+          # 2. 模型与搜索服务配置
           # ==========================================
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-pro' }}
           API_REQUEST_DELAY: '3.0'
           
           BOCHA_API_KEY: ${{ secrets.BOCHA_API_KEY }}
           
           # ==========================================
-          # 3. 邮件发送配置 (Secrets 配置)
+          # 3. 邮件发送配置
           # ==========================================
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
