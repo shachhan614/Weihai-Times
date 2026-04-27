@@ -154,18 +154,21 @@ def generate_briefing(client, model_name, comp_raw, weihai_raw, ind_data_dict, g
        - 属性严格核对：如“海关前置仓”、“电商物流”属于【政经】或【重点企业】，绝对不能塞进“金融与银行”板块！
 
     【极度严厉的排版与格式指令】
-    1. 首先生成【目录】，严格使用此 HTML：
+    1. 首先生成【目录】，严格使用此 HTML（必须包含 a 标签实现锚点跳转）：
        <h3 style="color: #1a365d; font-size: 18px; font-weight: normal; margin-top: 20px; margin-bottom: 10px;">一、 重点企业动态</h3>
        <div style="font-size: 14px; color: #333; line-height: 1.8;">
-       1. [新闻标题1]<br>
+       <a href="#item-[全局递增纯数字序号]" style="color: #333; text-decoration: none;">[全局递增纯数字序号]. [新闻标题1]</a><br>
        </div>
-    2. 正文部分格式指令：所有新闻【绝对禁止使用 Markdown 列表(* 或 -)】，必须严格使用以下 HTML 结构：
-       <div style="margin-bottom: 20px;">
-         <div style="font-size: 14px; font-weight: bold; color: #333;">[序号]. [标题]</div>
+       注意：目录中的编号必须是全局递增的纯数字，href 属性的值必须与正文的 id 对应。
+
+    2. 正文部分格式指令：所有新闻【绝对禁止使用 Markdown 列表(* 或 -)】，必须严格使用以下 HTML 结构（注意外层 div 增加 id 属性，且序号绝对不要加中括号）：
+       <div id="item-[全局递增纯数字序号]" style="margin-bottom: 20px;">
+         <div style="font-size: 14px; font-weight: bold; color: #333;">[全局递增纯数字序号]. [标题]</div>
          <div style="font-size: 14px; color: #333; line-height: 1.6; margin-top: 4px;">[用三句话精确概括核心事件、商业动作及影响]</div>
          <div style="font-size: 12px; color: #666; margin-top: 4px;">关键词：[词1] | [词2]</div>
          <div style="font-size: 10px; color: #999; margin-top: 4px;">来源：<a href="[URL]" style="color: #3498db; text-decoration: none;">[URL]</a></div>
        </div>
+       注意：正文和目录的序号直接写数字，如“1. 威海广泰...”，绝对不允许生成“[1]”、“【1】”等带有任何括号的形式！
 
     【六大板块内容架构（基于下方素材池）】
     一、 重点企业动态（最多 15 条）：
